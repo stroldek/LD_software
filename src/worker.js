@@ -1,5 +1,6 @@
 import { json, error, readJson, cleanString } from './http.js';
 import { buildLeadFilters, recordAudit } from './db.js';
+import { handleTelegramApi } from './telegram.js';
 
 const statuses = ['new', 'in_progress', 'qualified', 'rejected', 'archived'];
 const qualities = ['high', 'medium', 'low', 'unknown'];
@@ -20,10 +21,15 @@ async function api(request, env) {
   const path = url.pathname;
 
   if (path === '/api/health' && request.method === 'GET') {
-    return json({ ok: true, app: 'ZAMOVO', version: '0.1.0', database: Boolean(env.DB), adminConfigured: Boolean(env.ADMIN_TOKEN) });
+    return json({ ok: true, app: 'ZAMOVO', version: '0.2.0', database: Boolean(env.DB), adminConfigured: Boolean(env.ADMIN_TOKEN), telegramApiConfigured: Boolean(env.API_ID && env.API_HASH) });
   }
   if (!authorized(request, env)) return error(env.ADMIN_TOKEN ? 'Unauthorized' : 'ADMIN_TOKEN is not configured', env.ADMIN_TOKEN ? 401 : 503);
   if (!env.DB) return error('D1 binding DB is not configured', 503);
+
+  if (path.startsWith('/api/telegram/')) {
+    const response = await handleTelegramApi(request, env, path);
+    if (response) return response;
+  }
 
   if (path === '/api/dashboard' && request.method === 'GET') {
     const [leads, segments, recent] = await Promise.all([
