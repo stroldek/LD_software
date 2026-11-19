@@ -1,65 +1,46 @@
-# ZAMOVO — Telegram Lead Database
+# ZAMOVO — Telegram Lead Workspace
 
-A Cloudflare Workers + D1 application for managing Telegram leads. The repository is intentionally flat: all deployment files live at the repository root.
+Cloudflare Workers + Static Assets + D1 application for managing a Telegram lead database.
 
 ## Current milestone
 
-**0.1.0 — clean foundation**
+**0.2.0 — Personal Telegram MTProto authorization**
 
-- Cloudflare Worker with Static Assets.
-- D1 schema and migration.
-- Admin-token authentication.
-- Health and readiness endpoints.
-- Initial dashboard shell.
-- No Telegram scraping, bulk messaging, or unsupported automation.
-
-## Repository layout
-
-```
-.
-├── migrations/0001_initial_schema.sql
-├── public/
-│   ├── app.js
-│   ├── index.html
-│   └── styles.css
-├── src/
-│   ├── db.js
-│   ├── http.js
-│   └── worker.js
-├── .gitignore
-├── CHANGELOG.md
-├── package.json
-├── README.md
-└── wrangler.jsonc
-```
+- Existing admin-token protected workspace and D1 database.
+- Personal Telegram account authorization using MTProto (phone number, Telegram login code and optional 2FA password).
+- Telegram session is encrypted with AES-GCM before storage in D1.
+- Telegram API credentials are read only from Cloudflare Worker secrets.
+- Telegram Bot API and bot-token authorization are not used.
+- The account login is a foundation for future source/chat features; this release does not yet collect channel participants or send messages.
 
 ## Cloudflare setup
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md). The repository root is the Worker root directory; do not set a nested root directory in Cloudflare Builds.
+See [DEPLOYMENT.md](./DEPLOYMENT.md). Repository root is the Worker root directory.
 
-Required Worker secret:
-- `ADMIN_TOKEN` — a long, random password used to sign in to the web interface.
+Required Worker secrets:
+- `ADMIN_TOKEN` — admin password.
+- `API_ID` — numeric Telegram application ID from https://my.telegram.org.
+- `API_HASH` — Telegram application hash from https://my.telegram.org.
 
 D1 binding:
 - Binding name: `DB`
-- Database name: `zamovo-db`
-- Migration directory: `migrations`
+- Database: `zamovo-db`
 
-The D1 database ID must be added to `wrangler.jsonc` after creating the database. Do not commit API keys, passwords, Telegram sessions, or other secrets.
+The MTProto session is encrypted using a key derived from `ADMIN_TOKEN` and `API_HASH`. Do not rotate either secret while a Telegram session is saved. If either secret is rotated, disconnect/re-authorize the Telegram account. Never publish these values or the session string.
 
-## Local checks
+## Development
 
-Node.js is only needed for development checks, not for normal use of the deployed web app.
+Node.js is needed only for development checks, not for normal use of the deployed web app.
 
 ```bash
+npm install
 npm test
 ```
 
-## Product principles
+## Product constraints
 
-- One canonical lead record per Telegram user ID.
-- Segment membership is many-to-many.
-- Lists are paginated on the server.
-- Telegram collection and messaging must respect Telegram API rules, user privacy, and consent.
-- No arbitrary audience scraping, anti-spam evasion, or unsolicited automated messaging.
-- Features are delivered in milestones; an unfinished feature is never presented as operational.
+- Only personal Telegram accounts through MTProto are supported.
+- No Bot API, bot token or BotFather setup.
+- Telegram account login does not grant access to chats the account cannot access.
+- No arbitrary global user search, anti-spam evasion, or unsolicited automated messaging.
+- Any later collection or messaging feature must respect Telegram limits, applicable law, and consent requirements.
