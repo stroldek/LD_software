@@ -1,50 +1,52 @@
 # Развёртывание ZAMOVO на Cloudflare
 
-Все файлы проекта находятся в корне GitHub-репозитория. В Cloudflare Workers Builds укажите Root directory = `/` (или оставьте пустым, если Cloudflare трактует пустое значение как корень репозитория). Это именно Worker со Static Assets, не Pages.
+Все файлы проекта находятся в корне GitHub-репозитория. Это Cloudflare Worker со Static Assets, не Pages.
 
-## 1. Подключить репозиторий
+## Подключение репозитория
 
-1. Cloudflare Dashboard → Workers & Pages → Create application → Workers.
-2. Создайте Worker с именем `zamovo` либо подключите GitHub к существующему Worker.
-3. Подключите `stroldek/LD_software`, production branch `main`.
-4. Build command оставьте пустой. Deploy command: `npx wrangler deploy`.
-5. Root directory — корень репозитория, не указывайте вложенную папку.
+- Repository: `stroldek/LD_software`
+- Production branch: `main`
+- Root directory: корень репозитория (пусто или `/`)
+- Build command: пусто
+- Deploy command: `npx wrangler deploy`
 
-## 2. Создать D1
+## Секреты Worker
 
-1. Cloudflare Dashboard → Storage & databases → D1 SQL Database → Create.
-2. Имя базы: `zamovo-db`.
-3. Скопируйте Database ID.
-4. Откройте `wrangler.jsonc` в GitHub и замените `REPLACE_WITH_D1_DATABASE_ID` на реальный ID. Сохраните изменение в `main`. Это единственное значение инфраструктуры, которое не является секретом.
-5. В настройках Worker проверьте D1 binding: variable name `DB`, database `zamovo-db`. Конфигурация Wrangler создаёт binding при deploy.
+Cloudflare Dashboard → Workers & Pages → `ld-software` → Settings → Variables and Secrets. Все три значения должны быть добавлены именно как **Secret**, а не обычные Variables:
 
-## 3. Добавить секрет входа
+| Имя | Значение |
+|---|---|
+| `ADMIN_TOKEN` | Текущий административный токен ZAMOVO |
+| `API_ID` | Числовой API ID из https://my.telegram.org |
+| `API_HASH` | API hash из https://my.telegram.org |
 
-Worker → Settings → Variables and Secrets → Add → Secret:
-- Name: `ADMIN_TOKEN`
-- Value: длинный уникальный пароль (лучше 32+ случайных символа).
+Не присылай эти значения в чат и не добавляй их в GitHub. После изменения секретов Cloudflare может потребовать новый deploy.
 
-Не добавляйте токен в GitHub, код или обычные Variables. После сохранения выполните новый deploy, если Cloudflare этого требует.
+## D1
 
-## 4. Применить миграцию
+- Binding: `DB`
+- Database: `zamovo-db`
+- Database ID задаётся в `wrangler.jsonc`.
+- Миграция `migrations/0001_initial_schema.sql` должна быть применена.
 
-В терминале Cloudflare Workers Build / локальном терминале с Wrangler выполните:
+Новая авторизация Telegram использует существующую таблицу `app_settings`; дополнительная SQL-миграция не требуется.
 
-`npx wrangler d1 migrations apply zamovo-db --remote`
+## Авторизация личного Telegram
 
-Миграция создаёт таблицы лидов, разделов, связей, истории заданий, очереди, журнала и индексы. Повторное применение уже применённой миграции безопасно.
+1. Открой Worker и войди в ZAMOVO с `ADMIN_TOKEN`.
+2. В левом меню выбери **Telegram**.
+3. Укажи номер телефона в международном формате, например `+380XXXXXXXXX`.
+4. Нажми **Получить код Telegram**.
+5. Проверь приложение Telegram на другом устройстве: код часто приходит туда, а не по SMS.
+6. Введи код в ZAMOVO.
+7. Если Telegram запросит пароль двухэтапной проверки, введи его на следующем шаге.
 
-## 5. Проверить запуск
+После успешного входа ZAMOVO покажет профиль аккаунта. MTProto-сессия сохраняется в D1 в зашифрованном виде. Код и пароль Telegram не сохраняются.
 
-Откройте адрес Worker:
-- `/api/health` — публичная проверка Worker, версии и наличия D1 binding.
-- `/` — интерфейс входа.
+## Важные ограничения
 
-Войдите с `ADMIN_TOKEN`. Добавьте тестового лида с числовым Telegram ID, создайте раздел и проверьте, что счётчики обновились.
-
-## Важно
-
-- Не создавайте Pages-проект для этой конфигурации. Используется Cloudflare Worker + Static Assets.
-- Не публикуйте `ADMIN_TOKEN`, Telegram API hash или пользовательскую Telegram-сессию.
-- Telegram-подключение ещё не входит в этот фундаментальный этап. Не добавляйте Telegram API credentials до отдельного этапа интеграции.
-- До применения миграции D1 таблиц не будет, поэтому API после авторизации вернёт ошибку базы.
+- Используется только личный аккаунт MTProto. Telegram Bot API, токен бота и BotFather не нужны.
+- Сессия шифруется ключом, производным от `ADMIN_TOKEN` и `API_HASH`. Не меняй эти секреты, пока подключён аккаунт. При их ротации сначала отключи Telegram и подключи заново.
+- Telegram может ограничивать частые запросы кода. Не нажимай запрос многократно; дождись разрешённого времени.
+- В этой версии реализована авторизация и безопасное хранение сессии. Сбор участников источников, мониторинг чатов, экспорт и авто-чат пока не включены.
+- Доступны только те чаты и данные, которые доступны самому авторизованному аккаунту. Нельзя обходить ограничения Telegram.
