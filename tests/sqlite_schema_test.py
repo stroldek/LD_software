@@ -18,7 +18,7 @@ with tempfile.TemporaryDirectory() as tmp:
     conn.executescript(MIGRATIONS[0].read_text(encoding='utf-8'))
     conn.executescript(MIGRATIONS[1].read_text(encoding='utf-8'))
     conn.execute(
-        "INSERT INTO tg_account (id, api_id_enc, api_hash_enc, status) VALUES (1, 'enc-api-id', 'enc-api-hash', 'logged_out')"
+        "UPDATE tg_account SET api_id_enc = 'enc-api-id', api_hash_enc = 'enc-api-hash', session_enc = 'enc-session', status = 'connected', me_json = '{\"id\":\"10001\"}' WHERE id = 1"
     )
     conn.execute("INSERT INTO leads (id, telegram_id, source) VALUES ('lead-1', '10001', 'telegram_bot')")
     conn.commit()
@@ -38,8 +38,8 @@ with tempfile.TemporaryDirectory() as tmp:
 
     app_creds = conn.execute('SELECT api_id_enc, api_hash_enc FROM tg_app_credentials WHERE id = 1').fetchone()
     assert app_creds == ('enc-api-id', 'enc-api-hash'), app_creds
-    account = conn.execute('SELECT api_id_enc, api_hash_enc, status FROM tg_account WHERE id = 1').fetchone()
-    assert account == (None, None, 'logged_out'), account
+    account = conn.execute('SELECT api_id_enc, api_hash_enc, session_enc, status, me_json FROM tg_account WHERE id = 1').fetchone()
+    assert account == (None, None, 'enc-session', 'connected', '{"id":"10001"}'), account
 
     lead = conn.execute('SELECT telegram_id, source FROM leads WHERE id = ? ', ('lead-1',)).fetchone()
     assert lead == ('10001', 'telegram_account_monitor'), lead
