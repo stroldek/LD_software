@@ -72,7 +72,7 @@ function clientOptions(lib) {
     connectionRetries: 2,
     deviceModel: 'Lead Database Manager',
     systemVersion: 'Cloudflare Workers',
-    appVersion: '0.1.3',
+    appVersion: '0.1.4',
     langCode: 'ru',
     systemLangCode: 'ru',
   };
