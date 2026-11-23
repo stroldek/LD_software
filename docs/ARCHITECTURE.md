@@ -1,104 +1,99 @@
-# Архитектура Lead Database Manager
+# Архитектура ZAMOVO
 
-**Версия документа:** 0.1.0 · **Дата проверки:** 12.11.2026
+**Версия:** 0.1.4 · **Дата:** 23.11.2026
 
-## 1. Целевая схема
+## 1. Текущая схема
 
 ```mermaid
 flowchart LR
-  U[Пользователь / браузер] -->|HTTPS| A[Cloudflare Static Assets]
-  U -->|REST API| W[Cloudflare Worker]
-  T[Telegram Bot API] -->|Webhook HTTPS POST| W
-  W -->|Binding DB| D[(Cloudflare D1)]
-  W -->|HTTPS API calls| T
-  D --> L[Лиды и связи]
-  D --> S[Сегменты]
-  D --> Q[Очередь коммуникаций]
-  D --> H[История и аудит]
+  B[Браузер] -->|HTTPS / REST| W[Cloudflare Worker]
+  W -->|RPC| DO[Durable Object TG]
+  DO -->|GramJS / MTProto over WSS| T[Telegram DC web hostnames]
+  W -->|D1 binding| D[(Cloudflare D1)]
+  DO -->|encrypted session + credentials| D
+  D --> L[Лиды]
+  D --> M[Мониторинг и источники]
+  D --> H[Журнал]
 ```
 
-## 2. Зоны ответственности
+## 2. Компоненты
 
-| Слой | Компонент | Ответственность |
+| Компонент | Технология | Ответственность |
 |---|---|---|
-| UI | Static Assets | Отображение таблиц, форм, фильтров и состояний; никакого доступа к секретам |
-| API | Cloudflare Worker | Авторизация, валидация, бизнес-правила, маршрутизация, лимиты |
-| Storage adapter | D1 repository layer | SQL-запросы, транзакционные пакеты, пагинация; бизнес-логика не должна зависеть от SQL напрямую |
-| Database | Cloudflare D1 | Централизованные записи, сегменты, очереди, история, индексы |
-| Integration | Telegram adapter | Webhook, проверка подписи-секрета, получение разрешённых обновлений и ответы бота |
-| Export | Worker + R2 (опционально) | Серверное формирование файлов; R2 добавляется только при реальной необходимости |
+| Frontend | Static Assets, HTML/CSS/JS | Авторизация в панели, отображение аккаунта, QR, мониторинг и база |
+| API | Cloudflare Worker | ADMIN_TOKEN, проверка запросов, бизнес-маршруты |
+| Telegram session | Durable Object `TG` | Единственный активный user-account client и автомат состояний входа |
+| Telegram adapter | GramJS | MTProto, QR/phone login, чтение доступных диалогов и сообщений |
+| Database | Cloudflare D1 | Зашифрованные ключи приложения и user-session, лиды, источники, настройки, журналы |
 
-## 3. Принятые проектные решения
+В продукте нет Telegram-бота, Bot API webhook, токена бота, команды регистрации webhook или bot consent flow.
 
-1. **Один D1 для одного окружения** на первой версии; разделы — логические сущности, а не отдельные физические базы.
-2. **REST API** — единственный путь доступа frontend к хранилищу.
-3. **Параметризованные SQL-запросы** — обязательны; динамические значения нельзя конкатенировать в SQL.
-4. **Идентификатор Telegram хранится текстом** — исключает ненужные преобразования и потери точности при будущих изменениях API/языка.
-5. **Сегменты через `lead_segments`** — many-to-many, один лид может состоять в нескольких разделах.
-6. **Согласие — отдельное состояние** (`none`, `granted`, `revoked`), не смешивается со статусом обработки лида.
-7. **Очередь коммуникаций строится только из лидов с действующим согласием**. Серверная проверка обязательна при создании задачи и непосредственно перед отправкой.
-8. **Идемпотентность** — уникальный `telegram_updates.update_id` для входящих webhook, `consent_events.event_key` для событий согласия и `chat_queue.idempotency_key` для будущих действий.
-9. **Миграции только вперёд** — уже применённые numbered SQL-файлы не редактировать.
-10. **D1 adapter** — слой репозиториев/интерфейс `LeadRepository`; в дальнейшем PostgreSQL-реализация может реализовать тот же контракт.
+## 3. Разделение API-ключей и аккаунта
 
-## 4. Потоки данных
+API ID и API Hash идентифицируют API-приложение. Они не определяют, какой Telegram-пользователь войдёт в систему. Одна пара ключей может использоваться для авторизации разных личных аккаунтов.
 
-### 4.1. Разрешённое добавление лида через бота
+Хранилища разделены:
+- `tg_app_credentials` — зашифрованные API ID и API Hash приложения.
+- `tg_account` — зашифрованная MTProto user-session, статус и данные профиля текущего аккаунта.
+
+Выход из аккаунта удаляет только user-session. API-ключи приложения сохраняются.
+
+Миграция `0003_account_credentials_no_bot.sql` переносит существующие зашифрованные ключи из старых колонок `tg_account`, очищает их и удаляет устаревшие таблицы Bot API. Записи лидов и текущая сессия не удаляются.
+
+## 4. Подключение Telegram в Cloudflare Workers
+
+GramJS классифицирует Worker как Node runtime, так как в нём нет `window`. Стандартный выбор DC из GramJS поэтому может выдать IP-адрес, хотя приложение использует WebSocket over TLS.
+
+В адаптере `src/tg/gramjs.js` переопределён `getDC`: все WSS-соединения используют доменные endpoint-ы Telegram:
+- DC1 — `pluto.web.telegram.org`
+- DC2 — `venus.web.telegram.org`
+- DC3 — `aurora.web.telegram.org`
+- DC4 — `vesta.web.telegram.org`
+- DC5 — `flora.web.telegram.org`
+
+Начальная сессия использует DC4; при восстановлении сохраняется DC ID, но серверный адрес нормализуется на WSS hostname. Этот resolver применяется и при переключении DC, и для download DC.
+
+## 5. Поток входа
 
 ```mermaid
 sequenceDiagram
-  participant P as Пользователь
-  participant TG as Telegram
+  participant U as Пользователь
+  participant UI as Browser UI
   participant W as Worker
-  participant D as D1
-  P->>TG: /start
-  TG->>W: webhook update
-  W->>W: Проверка secret header и private chat
-  W->>TG: Запрос явного согласия
-  P->>TG: Нажатие «Согласен»
-  TG->>W: callback_query
-  W->>D: UPSERT лида + consent event
-  W->>TG: Подтверждение сохранения
-  P->>TG: /stop (при необходимости)
-  TG->>W: webhook update
-  W->>D: consent_status = revoked
-  W->>TG: Подтверждение отзыва
+  participant DO as Durable Object TG
+  participant TG as Telegram MTProto
+
+  U->>UI: Нажать «Показать QR-код»
+  UI->>W: POST /api/tg/login/qr
+  W->>DO: startQr
+  DO->>TG: MTProto WSS handshake
+  DO->>TG: auth.ExportLoginToken
+  TG-->>DO: Login token
+  DO-->>W: tg://login?token=...
+  W-->>UI: QR payload
+  U->>TG: Scan QR in Telegram
+  TG-->>DO: Authorization update
+  DO->>DO: Encrypt and persist user-session
+  DO-->>UI: connected account status
 ```
 
-### 4.2. Ручное управление
+Вход по номеру телефона — отдельный flow с кодом и необязательным паролем 2FA.
 
-UI → Worker REST endpoint → валидатор → service/use-case → repository adapter → D1. Ответ API содержит единый формат `ok`, `data`, `error`, `meta` (будет формализован на этапе 2).
+## 6. Правила данных и источников
 
-## 5. Предполагаемое разбиение Worker на модули
+1. Telegram ID хранится строкой и уникален в таблице лидов.
+2. Источники добавляются вручную из диалогов текущего авторизованного аккаунта.
+3. Для канала сообщения комментариев читаются в связанной группе обсуждения.
+4. Повторная обработка одного сообщения не создаёт повторное событие.
+5. Первая проверка фиксирует baseline; дальше читаются только новые сообщения.
+6. Ошибка одного источника не должна останавливать доступные источники.
+7. Продукт не выполняет глобальный поиск пользователей, не обходит ограничения доступа и не отправляет нежелательные сообщения.
 
-- `routes/` — маршруты API.
-- `services/` — бизнес-операции (lead, segment, search, export, queue).
-- `repositories/` — изоляция SQL/D1.
-- `integrations/telegram/` — webhook и Telegram Bot/Client API.
-- `middleware/` — авторизация, валидация, rate limiting, журнал.
-- `shared/` — типы, ответы, константы, ошибки.
+## 7. Миграции и конфигурация
 
-В Stage 1 код оставлен компактнее: сложное разделение будет реализовано по мере появления реальных модулей, без искусственного создания пустых файлов.
+Миграции D1 выполняются последовательно:
+1. `0001_stage1_prototype.sql`
+2. `0002_live_telegram_test.sql`
+3. `0003_account_credentials_no_bot.sql`
 
-## 6. Ограничения архитектуры
-
-- D1 — SQLite-совместимая serverless БД, а не PostgreSQL; запросы и типы должны оставаться переносимыми.
-- Одна D1 база обрабатывает запросы последовательно; `batch()` уменьшает overhead, массовые изменения нужно порционировать.
-- В бесплатном тарифе Worker имеет дневную квоту запросов и низкий CPU budget. Дорогой экспорт и фоновые задачи требуют отдельного дизайна.
-- Exactly-once для внешнего Telegram side-effect и записи в D1 не гарантируется одной транзакцией: между вызовом Telegram и отметкой состояния возможен обрыв. Для очереди следующего этапа потребуется outbox/claim/lease и ручная политика повторов.
-
-## 7. ER-связи
-
-```mermaid
-erDiagram
-  LEADS ||--o{ LEAD_SEGMENTS : assigned
-  SEGMENTS ||--o{ LEAD_SEGMENTS : contains
-  LEADS ||--o{ CONSENT_EVENTS : consent_history
-  LEADS ||--o{ CHAT_QUEUE : queued
-  LEADS ||--o{ CHAT_HISTORY : communication
-  CHAT_QUEUE ||--o{ CHAT_HISTORY : produces
-  SEARCH_JOBS ||--o{ LEADS : discovers
-  APP_USERS ||--o{ AUDIT_LOG : performs
-```
-
-Справочная полная модель: `../migrations/FUTURE_SCHEMA.sql`. На этапе 1 реально создана только часть таблиц для Telegram proof-of-concept.
+Worker требует `ADMIN_TOKEN` и `APP_SECRET`. Для Telegram API keys можно использовать secrets `TELEGRAM_API_ID` и `TELEGRAM_API_HASH` либо сохранить ключи приложения на экране аккаунта. Секреты и user-session не передаются frontend.
