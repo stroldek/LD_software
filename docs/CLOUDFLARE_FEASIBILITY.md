@@ -1,107 +1,100 @@
-# Проверка инфраструктуры Cloudflare
+# Cloudflare: текущая конфигурация и развёртывание
 
-**Дата проверки:** 12.11.2026
+**Версия:** 0.1.4 · **Дата:** 23.11.2026
 
-## 1. Рекомендуемая конфигурация
+## 1. Компоненты
 
-- **Cloudflare Workers** — REST API и webhook.
-- **Workers Static Assets** — frontend и общие статические файлы в одной публикации с Worker.
-- **Cloudflare D1** — основная реляционная база.
-- **R2** — не нужен в первой версии; может пригодиться для временных файлов большого экспорта.
-- **Queues / Durable Objects** — не добавлять заранее; оценить, когда появятся долгие/повторяемые фоновые задачи.
+| Компонент | Назначение |
+|---|---|
+| Cloudflare Workers | REST API и серверная логика |
+| Workers Static Assets | Frontend в одной публикации с Worker |
+| Durable Objects | Один долгоживущий процесс Telegram user-session |
+| D1 | Лиды, параметры мониторинга, API credentials и зашифрованная MTProto session |
 
-## 2. Актуальные лимиты Free на дату проверки
+Интеграция Telegram использует GramJS и MTProto от имени личного аккаунта пользователя. Bot API и Telegram webhook endpoints в продукте не используются.
 
-| Компонент | Подтверждённый лимит Free | Влияние |
-|---|---:|---|
-| D1 databases per account | 10 | Достаточно для dev/test/production на старте, если экономно использовать базы |
-| D1 max size per database | 500 MB | Основной риск при росте объёма и истории |
-| D1 account storage | 5 GB | Общий лимит аккаунта |
-| D1 read subrequests per Worker invocation | 50 | Использовать `batch()` и объединённые запросы |
-| D1 bound parameters per query | 100 | Не делать огромные `IN (...)`; дробить пакеты |
-| D1 query duration | 30 sec | Большие обновления/удаления дробить на пачки |
-| Workers requests | 100,000/day | Учитывать API-поллинг интерфейса и webhook-трафик |
-| Workers CPU time per HTTP request | 10 ms | Не выполнять тяжёлые CSV/XLSX операции в одном HTTP-запросе |
-| Workers memory | 128 MB | Не держать большую выборку/файл целиком в памяти |
+## 2. Переменные и secrets
 
-Лимиты меняются, поэтому перед запуском следующей крупной версии их нужно сверять повторно.
-
-## 3. Достаточно ли D1 для 100 000 лидов?
-
-Количество строк само по себе не лимитировано D1, однако бесплатная база ограничена 500 MB. Для записи с короткими текстовыми полями 100 000 лидов выглядят реалистичной целью для тестирования, но подтвердить фактический объём можно только после наполнения синтетическим набором и измерения реального размера таблиц и индексов.
-
-Практические меры:
-
-- минимизировать объём полей и не хранить Telegram message history без отдельной цели;
-- тяжёлые и редко используемые данные держать в JSON или отдельной таблице, только если это обосновано;
-- индексировать поля поиска по результатам тестирования;
-- пагинировать сервером по cursor/keyset, а не `OFFSET` на глубоких страницах;
-- использовать `batch()` и небольшие пакеты;
-- большие экспорты формировать потоково/фоново, с временным файлом в R2 только если потребуется;
-- предусмотреть экспорт резервной копии.
-
-D1 single-threaded на одну базу; суммарную пропускную способность надо тестировать на реальных запросах. В документации Cloudflare отдельно рекомендуется уменьшать число запросов и применять `batch()`.
-
-## 4. Принцип: никаких установок на компьютере пользователя
-
-Сборка поставляется в двух режимах:
-
-- **Локальный предпросмотр:** `START_HERE.html` открывается двойным щелчком в браузере. Не требует Node.js, Python, Docker, Wrangler, Git или локального сервера. В этом режиме показывается интерфейс, а реальные подключения честно помечаются как недоступные.
-- **Полная публикация:** пользователь работает через сайт GitHub и Cloudflare Dashboard. Репозиторий подключается к Cloudflare Workers Builds; облачная сборочная среда устанавливает/запускает Wrangler сама. Никакие инструменты разработки на пользовательский ПК не устанавливаются.
-
-Для конфигурации через GitHub Web Editor нужно заменить `REPLACE_WITH_D1_DATABASE_ID` в `wrangler.jsonc` на ID созданной D1-базы. Если Cloudflare Dashboard просит build command для Workers Build, используется `npm run deploy`; выполнение происходит в облачной среде Cloudflare, а не на ПК пользователя. SQL миграция применяется копированием содержимого `migrations/0001_stage1_prototype.sql` в D1 → SQL Console.
-
-Сценарий с локальным терминалом/Wrangler не является обязательным и в пользовательских инструкциях не предлагается.
-
-## 5. D1 binding
-
-Имя binding в коде — `DB`.
-
-В Worker Dashboard:
-
-1. Открыть Worker → **Bindings**.
-2. Нажать **Add binding**.
-3. Выбрать **D1 database**.
-4. Variable name: `DB`.
-5. Выбрать базу `lead-database-manager`.
-6. Сохранить и повторно развернуть Worker.
-
-## 6. Secrets
-
-В Worker → **Settings / Variables and Secrets** создать secrets:
+Обязательные secrets Worker:
 
 | Имя | Назначение |
 |---|---|
-| `TELEGRAM_BOT_TOKEN` | Токен бота, полученный от BotFather |
-| `TELEGRAM_WEBHOOK_SECRET` | Секрет webhook, 32+ символа, только A-Z, a-z, 0-9, `_`, `-` |
-| `SETUP_TOKEN` | Отдельный длинный пароль для однократной/повторной регистрации webhook |
+| `ADMIN_TOKEN` | Пароль входа в web-панель; минимум 20 символов |
+| `APP_SECRET` | AES-GCM шифрование ключей и Telegram session; минимум 24 символа |
 
-Не создавайте обычные переменные для секретных значений и не передавайте bot token браузеру.
+Необязательные secrets:
 
-## 7. Применение первой миграции
+| Имя | Назначение |
+|---|---|
+| `TELEGRAM_API_ID` | API ID приложения с `my.telegram.org` |
+| `TELEGRAM_API_HASH` | API Hash того же приложения |
 
-1. Открыть Cloudflare Dashboard → **Storage & databases** → **D1 SQL Database**.
-2. Открыть `lead-database-manager`.
-3. Открыть SQL Console.
-4. Скопировать и выполнить целиком файл `migrations/0001_stage1_prototype.sql`.
-5. В списке таблиц должны появиться `leads`, `consent_events`, `telegram_updates`, `schema_migrations`.
-6. В `schema_migrations` должна быть строка `0001_stage1_prototype`.
+API ID и API Hash можно не задавать в Cloudflare: их можно сохранить через экран «Аккаунт Telegram». Тогда они хранятся в D1 зашифрованными. Эти ключи идентифицируют приложение, а не личный аккаунт, который будет подключён через QR/номер.
 
-Не запускать `docs/FUTURE_SCHEMA.sql` — это справочная схема, не миграция. В папке `migrations/` оставлены только пронумерованные файлы, предназначенные для миграционного механизма.
+Не создавать и не передавать в приложение Bot API token или webhook secrets.
 
-## 8. Прототип endpoint-ов
+## 3. D1 и миграции
 
-| Метод | Путь | Назначение |
-|---|---|---|
-| GET | `/api/health` | Проверка Worker, binding D1 и настроек Telegram |
-| POST | `/api/setup/telegram-webhook` | Проверка SETUP_TOKEN и регистрация webhook через Telegram `getMe` + `setWebhook` |
-| POST | `/api/telegram/webhook` | Получение Telegram updates; требует секретный заголовок Telegram |
+В `wrangler.jsonc` проверьте, что binding `DB` указывает на нужную D1 database.
 
-## 9. Официальные источники
+Для новой базы выполнить по порядку, каждый файл один раз:
+1. `migrations/0001_stage1_prototype.sql`
+2. `migrations/0002_live_telegram_test.sql`
+3. `migrations/0003_account_credentials_no_bot.sql`
+
+Для существующей базы, где 0001 и 0002 уже применены, выполнить только 0003.
+
+Миграция 0003:
+- создаёт таблицу `tg_app_credentials`;
+- переносит туда старые зашифрованные ключи из `tg_account`;
+- очищает прежние колонки API ID / API Hash;
+- удаляет неиспользуемые таблицы `consent_events` и `telegram_updates`;
+- оставляет user-session, сведения об аккаунте и лиды.
+
+Повторно выполнять миграцию 0002 нельзя: она содержит `ALTER TABLE ADD COLUMN`.
+
+## 4. Durable Object
+
+Binding `TG` должен быть указан в `wrangler.jsonc` и направлен на класс Durable Object `TelegramSession`. Экземпляр `main` хранит состояние единственной активной user-session.
+
+D1 является долговременным хранилищем. Durable Object держит активный GramJS client в памяти; после перезапуска он восстанавливает зашифрованную session из D1.
+
+## 5. Публикация
+
+Репозиторий подключается к Cloudflare Workers Builds. При публикации Cloudflare устанавливает зависимости и собирает проект в удалённой среде. Локальная установка Node.js, Python, Docker или Wrangler для обычного использования не требуется.
+
+Перед публикацией:
+- проверьте D1 ID в `wrangler.jsonc`;
+- проверьте D1 binding `DB`;
+- проверьте Durable Object binding и миграции DO;
+- задайте `ADMIN_TOKEN` и `APP_SECRET`;
+- примените D1 SQL migrations 0001–0003.
+
+## 6. Диагностика Telegram
+
+В приложении откройте «Аккаунт Telegram» → «Диагностика».
+
+Проверки включают:
+- ADMIN_TOKEN и APP_SECRET;
+- Durable Object binding;
+- наличие таблицы `tg_app_credentials` (миграция 0003);
+- импорт GramJS;
+- WebSocket over TLS к `vesta.web.telegram.org` (DC4);
+- MTProto handshake через `help.getNearestDc`;
+- экспорт QR login token.
+
+Успешный WebSocket handshake не означает, что MTProto уже работает. Критерий транспортной проверки — успешный ответ от MTProto RPC.
+
+## 7. Сетевой транспорт MTProto
+
+В Cloudflare Worker библиотека GramJS классифицирует runtime как Node, поскольку отсутствует `window`. Без дополнительной настройки она может выбирать IP адреса Telegram DC.
+
+Приложение 0.1.4 переопределяет resolver GramJS и для всех WSS соединений использует доменные адреса DC: `pluto`, `venus`, `aurora`, `vesta`, `flora.web.telegram.org`. При переходе на другой DC или восстановлении сессии применяется тот же механизм.
+
+## 8. Ссылки на документацию Cloudflare
 
 - D1 limits: https://developers.cloudflare.com/d1/platform/limits/
 - Workers limits: https://developers.cloudflare.com/workers/platform/limits/
 - Static Assets: https://developers.cloudflare.com/workers/static-assets/
-- D1 getting started (Dashboard + CLI): https://developers.cloudflare.com/d1/get-started/
+- D1 getting started: https://developers.cloudflare.com/d1/get-started/
 - D1 migrations: https://developers.cloudflare.com/d1/reference/migrations/
-- D1 remote development: https://developers.cloudflare.com/d1/best-practices/remote-development/
