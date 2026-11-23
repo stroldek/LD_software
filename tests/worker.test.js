@@ -7,49 +7,31 @@ const fakeDB = {
     return {
       first: async () => {
         if (sql.includes('COUNT(*)')) return { total: 4 };
+        if (sql.includes('tg_app_credentials')) return { id: 1 };
         return null;
       },
     };
   },
 };
 
-test('health endpoint reports Worker, D1 and Telegram configuration', async () => {
-  const response = await worker.fetch(new Request('https://example.workers.dev/api/health'), {
-    DB: fakeDB,
-    TELEGRAM_BOT_TOKEN: 'test-token-not-used',
-    TELEGRAM_WEBHOOK_SECRET: 'A'.repeat(40),
-  });
+test('health endpoint reports Worker and D1 without Bot API configuration', async () => {
+  const response = await worker.fetch(new Request('https://example.workers.dev/api/health'), { DB: fakeDB });
   const body = await response.json();
   assert.equal(response.status, 200);
   assert.equal(body.checks.worker, 'ok');
   assert.equal(body.checks.database, 'connected');
-  assert.equal(body.checks.telegram, 'configured');
+  assert.equal('telegram' in body.checks, false);
   assert.equal(body.leads_count, 4);
 });
 
-test('webhook rejects requests without Telegram secret header', async () => {
-  const response = await worker.fetch(new Request('https://example.workers.dev/api/telegram/webhook', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ update_id: 1 }),
-  }), {
-    DB: fakeDB,
-    TELEGRAM_BOT_TOKEN: 'test-token-not-used',
-    TELEGRAM_WEBHOOK_SECRET: 'A'.repeat(40),
-  });
-  assert.equal(response.status, 401);
-  assert.equal((await response.json()).error, 'unauthorized');
-});
-
-test('webhook setup rejects an incorrect setup token before calling Telegram', async () => {
-  const response = await worker.fetch(new Request('https://example.workers.dev/api/setup/telegram-webhook', {
-    method: 'POST',
-    headers: { 'x-setup-token': 'wrong-token' },
-  }), {
-    DB: fakeDB,
-    SETUP_TOKEN: 'S'.repeat(40),
-    TELEGRAM_BOT_TOKEN: 'test-token-not-used',
-    TELEGRAM_WEBHOOK_SECRET: 'A'.repeat(40),
-  });
-  assert.equal(response.status, 401);
+test('removed Bot API webhook and setup routes do not exist', async () => {
+  const env = { DB: fakeDB, ADMIN_TOKEN: 'test-admin-token-0123456789', APP_SECRET: 'test-app-secret-0123456789abcdef' };
+  const webhook = await worker.fetch(new Request('https://example.workers.dev/api/telegram/webhook', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ update_id: 1 }),
+  }), env);
+  const setup = await worker.fetch(new Request('https://example.workers.dev/api/setup/telegram-webhook', {
+    method: 'POST', headers: { 'x-setup-token': 'wrong-token' },
+  }), env);
+  assert.equal(webhook.status, 404);
+  assert.equal(setup.status, 404);
 });
