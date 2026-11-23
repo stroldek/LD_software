@@ -50,7 +50,7 @@
       <div class="preview-banner" id="previewBanner" hidden>Локальный предпросмотр: интерфейс открыт из файла, сервер недоступен. Кнопки не отправляют запросы. Реальная работа — после публикации в Cloudflare.</div>
       <header class="topbar">
         <div><div class="eyebrow" id="pageEyebrow">СИСТЕМА УПРАВЛЕНИЯ ЛИДАМИ</div><h1 id="pageTitle">Обзор</h1></div>
-        <div class="top-actions"><span class="version-chip">v0.1.3</span><button class="button button-quiet" id="refreshButton" type="button">↻ <span>Обновить</span></button></div>
+        <div class="top-actions"><span class="version-chip">v0.1.4</span><button class="button button-quiet" id="refreshButton" type="button">↻ <span>Обновить</span></button></div>
       </header>
 
       <!-- OVERVIEW -->
@@ -67,25 +67,20 @@
           <ol class="checklist" id="checklist"></ol>
         </div>
 
-        <details class="panel section-block">
-          <summary>Telegram-бот из этапа 1 (необязательно)</summary>
-          <p class="panel-text">Бот принимает лидов, которые сами написали ему и дали согласие. Для проверки аккаунта и мониторинга он не нужен.</p>
-          <div class="setup-form flush"><label for="setupToken">Ключ настройки (SETUP_TOKEN)</label><div class="input-row"><input id="setupToken" type="password" autocomplete="off" placeholder="Введите ключ настройки"><button id="registerButton" class="button" type="button">Зарегистрировать webhook</button></div></div>
-          <div id="setupResult" class="result-message flush" role="status" aria-live="polite"></div>
-        </details>
-      </section>
+</section>
 
       <!-- ACCOUNT -->
       <section class="page" data-page="account" hidden>
         <div class="panel">
           <div class="panel-head"><div><div class="eyebrow">ШАГ 1</div><h2>Ключи приложения Telegram</h2></div><span class="status-pill" id="credsPill">—</span></div>
-          <p class="panel-text">Telegram требует, чтобы программа, входящая в аккаунт, имела свои ключи. Они бесплатные: откройте <code>my.telegram.org</code> → войдите по номеру → <b>API development tools</b> → создайте приложение (название любое) → скопируйте <b>api_id</b> и <b>api_hash</b>.</p>
+          <p class="panel-text">API ID и API Hash идентифицируют приложение ZAMOVO, а не Telegram-аккаунт. Один набор ключей можно использовать для входа в разные личные аккаунты: откройте <code>my.telegram.org</code> → войдите по номеру → <b>API development tools</b> → создайте приложение (название любое) → скопируйте <b>api_id</b> и <b>api_hash</b>.</p>
           <form class="form-row" id="credsForm" autocomplete="off">
             <div class="field"><label for="apiId">api_id</label><input id="apiId" inputmode="numeric" placeholder="1234567" autocomplete="off"></div>
             <div class="field grow"><label for="apiHash">api_hash</label><input id="apiHash" type="password" placeholder="32 символа" autocomplete="off"></div>
             <button class="button" type="submit" id="credsButton">Сохранить</button>
           </form>
-          <small class="hint" id="credsHint">Ключи хранятся на сервере в зашифрованном виде и никогда не возвращаются в браузер.</small>
+          <small class="hint" id="credsHint">Ключи приложения хранятся на сервере в зашифрованном виде и никогда не возвращаются в браузер. Они не привязаны к аккаунту, который вы подключаете ниже.</small>
+          <p class="panel-text">Ниже подключается отдельный личный аккаунт Telegram. Можно подключить аккаунт, отличный от того, с которого создавались API-ключи. Авторизация и сохранённая сессия относятся только к подключённому аккаунту.</p>
         </div>
 
         <div class="panel section-block">
@@ -156,7 +151,7 @@
         </div>
       </section>
 
-      <footer class="footer"><span>LEAD DATABASE MANAGER</span><span>Сборка 0.1.3 · 23.11.2026</span></footer>
+      <footer class="footer"><span>LEAD DATABASE MANAGER</span><span>Сборка 0.1.4 · 23.11.2026</span></footer>
     </main>
   </div>
 
