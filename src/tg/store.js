@@ -9,8 +9,20 @@ export function createStore(db) {
     async getAccount() {
       return (await db.prepare('SELECT * FROM tg_account WHERE id = 1').first()) || null;
     },
+    // Application credentials are global to the software, not tied to a Telegram account session.
+    async getAppCredentials() {
+      return (await db.prepare('SELECT api_id_enc, api_hash_enc FROM tg_app_credentials WHERE id = 1').first()) || null;
+    },
+    async saveAppCredentials(apiIdEnc, apiHashEnc) {
+      const now = nowIso();
+      await db.prepare(`INSERT INTO tg_app_credentials (id, api_id_enc, api_hash_enc, updated_at)
+        VALUES (1, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET api_id_enc = excluded.api_id_enc,
+          api_hash_enc = excluded.api_hash_enc, updated_at = excluded.updated_at`)
+        .bind(apiIdEnc, apiHashEnc, now).run();
+    },
     async saveAccount(fields) {
-      const allowed = ['api_id_enc', 'api_hash_enc', 'session_enc', 'status', 'me_json', 'last_error'];
+      const allowed = ['session_enc', 'status', 'me_json', 'last_error'];
       const keys = Object.keys(fields).filter((k) => allowed.includes(k));
       if (!keys.length) return;
       await db.prepare('INSERT OR IGNORE INTO tg_account (id) VALUES (1)').run();
