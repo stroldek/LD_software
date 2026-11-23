@@ -5,6 +5,19 @@
 
 const PEER_RETRYABLE = /PHONE_CODE_INVALID|PASSWORD_HASH_INVALID/;
 
+// Telegram's WSS transport on port 443 requires DC hostnames, not bare IP addresses.
+// GramJS detects a Worker as Node (there is no window), so its default DC selection is an IP.
+export const WEB_DC_HOSTS = Object.freeze({
+  1: 'pluto', 2: 'venus', 3: 'aurora', 4: 'vesta', 5: 'flora',
+});
+
+export function getWebDcEndpoint(dcId, download = false) {
+  const id = Number(dcId);
+  const prefix = WEB_DC_HOSTS[id];
+  if (!prefix) throw new Error(`Unsupported Telegram data center: ${dcId}`);
+  return { id, ipAddress: `${prefix}${download ? '-1' : ''}.web.telegram.org`, port: 443 };
+}
+
 function pick(mod, name) {
   return mod?.[name] ?? mod?.default?.[name] ?? mod?.connection?.[name] ?? null;
 }
@@ -78,7 +91,18 @@ class GramClient {
     if (this.client) return;
     this.lib = await loadLib();
     const { TelegramClient, StringSession } = this.lib;
-    this.client = new TelegramClient(new StringSession(this.session), this.creds.apiId, this.creds.apiHash, clientOptions(this.lib));
+    const session = new StringSession(this.session);
+    // A fresh session defaults to DC4. A restored session keeps its DC ID, but the
+    // server address must always be the domain name accepted by Telegram WSS.
+    const initialDc = Number(session.dcId) || 4;
+    const initialEndpoint = getWebDcEndpoint(initialDc);
+    session.setDC(initialDc, initialEndpoint.ipAddress, initialEndpoint.port);
+
+    this.client = new TelegramClient(session, this.creds.apiId, this.creds.apiHash, clientOptions(this.lib));
+    // GramJS chooses IP-based DC addresses in Workers because it treats the runtime
+    // as Node (no browser window). Force the documented WSS hostnames for every DC,
+    // including migrated sessions and media/download DCs.
+    this.client.getDC = async (dcId, downloadDC = false) => getWebDcEndpoint(dcId, downloadDC);
     try { this.client.setLogLevel('none'); } catch { /* optional */ }
   }
 
@@ -234,7 +258,7 @@ export async function runDiagnostics({ creds }) {
 
   let lib = null;
   if (!(await run('library', 'Библиотека Telegram (GramJS) загружается', async () => { lib = await loadLib(); return 'импорт выполнен'; }))) return { steps };
-  if (!(await run('websocket', 'Соединение с серверами Telegram (WebSocket)', () => probeWebSocket('wss://zws2.web.telegram.org/apiws')))) return { steps };
+  if (!(await run('websocket', 'WebSocket к Telegram DC4 (WSS, доменный адрес)', () => probeWebSocket('wss://vesta.web.telegram.org/apiws')))) return { steps };
   if (!creds) {
     steps.push({ name: 'handshake', title: 'Рукопожатие MTProto', ok: false, ms: 0, detail: 'Сначала сохраните API ID и API hash.' });
     return { steps };
