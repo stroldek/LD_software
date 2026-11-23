@@ -7,12 +7,27 @@ const fakeDB = {
     return {
       first: async () => {
         if (sql.includes('COUNT(*)')) return { total: 4 };
-        if (sql.includes('tg_app_credentials')) return { id: 1 };
         return null;
       },
     };
   },
 };
+
+function env() {
+  return {
+    DB: fakeDB,
+    ADMIN_TOKEN: 'test-admin-token-0123456789',
+    APP_SECRET: 'test-app-secret-0123456789abcdef',
+    TG: {
+      idFromName: () => 'main',
+      get: () => ({ invoke: async () => ({ ok: true, data: null }) }),
+    },
+  };
+}
+
+function adminHeaders(extra = {}) {
+  return { authorization: 'Bearer test-admin-token-0123456789', ...extra };
+}
 
 test('health endpoint reports Worker and D1 without Bot API configuration', async () => {
   const response = await worker.fetch(new Request('https://example.workers.dev/api/health'), { DB: fakeDB });
@@ -25,13 +40,12 @@ test('health endpoint reports Worker and D1 without Bot API configuration', asyn
 });
 
 test('removed Bot API webhook and setup routes do not exist', async () => {
-  const env = { DB: fakeDB, ADMIN_TOKEN: 'test-admin-token-0123456789', APP_SECRET: 'test-app-secret-0123456789abcdef' };
   const webhook = await worker.fetch(new Request('https://example.workers.dev/api/telegram/webhook', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ update_id: 1 }),
-  }), env);
+    method: 'POST', headers: adminHeaders({ 'content-type': 'application/json' }), body: JSON.stringify({ update_id: 1 }),
+  }), env());
   const setup = await worker.fetch(new Request('https://example.workers.dev/api/setup/telegram-webhook', {
-    method: 'POST', headers: { 'x-setup-token': 'wrong-token' },
-  }), env);
+    method: 'POST', headers: adminHeaders({ 'x-setup-token': 'wrong-token' }),
+  }), env());
   assert.equal(webhook.status, 404);
   assert.equal(setup.status, 404);
 });
