@@ -10,7 +10,7 @@ class Stmt {
   async run() { const r = this.db.prepare(this.sql).run(...this.args); return { meta: { changes: Number(r.changes) } }; }
 }
 
-export function createD1(migrationFiles = ['0001_stage1_prototype.sql', '0002_live_telegram_test.sql']) {
+export function createD1(migrationFiles = ['0001_stage1_prototype.sql', '0002_live_telegram_test.sql', '0003_account_credentials_no_bot.sql']) {
   const db = new DatabaseSync(':memory:');
   for (const f of migrationFiles) db.exec(fs.readFileSync(new URL(`../../migrations/${f}`, import.meta.url), 'utf8'));
   return {
