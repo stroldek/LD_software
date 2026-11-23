@@ -1,101 +1,84 @@
-# Проверка технических возможностей Telegram
+# Telegram integration: supported user-account model
 
-**Дата проверки:** 12.11.2026 · **Актуальность API:** Telegram Bot API 10.4 (изменения от 09.11.2026)
+**Версия:** 0.1.4 · **Дата:** 23.11.2026
 
-## 1. Вывод
+## 1. Chosen integration
 
-Telegram-интеграцию реализовать можно, но первоначальный сценарий «найти произвольных пользователей Telegram по интересам/ключевым словам и автоматически написать им» нельзя реализовать через стандартный Bot API и он не закладывается в продукт.
+The product connects a regular Telegram user account through MTProto using GramJS. No Telegram bot is part of the product.
 
-Поддерживаемая основа: пользователи сами начинают взаимодействие с ботом, бот получает доступные данные их Telegram-профиля, предлагает понятное согласие, и только после подтверждения профиль сохраняется как лид. После этого коммуникации возможны только в пределах текущего согласия и технических возможностей API.
+The application uses:
+- Telegram API ID and API Hash from `my.telegram.org` — application credentials.
+- The user's chosen personal Telegram account — authorizes separately through QR or phone number, code and optional 2FA password.
+- An encrypted MTProto session — stored server-side in D1 and managed by the `TG` Durable Object.
 
-## 2. Bot API — возможности и границы
+## 2. Application credentials and account identity
 
-| Сценарий | Возможность | Решение в проекте |
-|---|---|---|
-| Получить Telegram ID и доступные поля автора входящего сообщения | Да, в объекте User update | Реализовано для private chat |
-| Получить username/имя/фамилию | Если поля предоставлены Telegram | Хранить nullable-поля |
-| Самостоятельно начать личный диалог с произвольным пользователем | Нет | Не реализовывать |
-| Получить сообщения в личном чате бота | Да, когда пользователь написал боту | Webhook prototype |
-| Получать сообщения из группы | Зависит от членства, privacy mode и прав | Отдельная проверка на этапе Telegram-модуля |
-| Получить телефон пользователя | Только если пользователь явно поделился контактом через поддерживаемую кнопку | Не запрашивать на этапе 1 |
-| Отправить первое сообщение | Бот не может начать диалог с пользователем; пользователь должен сначала обратиться/добавить бота | Не использовать cold DM |
-| Получить пользователя по `@username` как произвольный поиск | Нет общего Bot API-метода поиска людей | Не обещать такую функцию |
-| Массовая отправка | Технические лимиты и требования платформы | Не использовать как механизм cold outreach |
+API ID and API Hash identify the registered API application. They do not identify the Telegram account being connected.
 
-Telegram Bot API официально сообщает, что бот не может начинать диалоги; пользователь должен сначала написать боту или добавить его в группу. Bot FAQ также описывает доступные боту типы обновлений и способы доставки update — webhook или long polling.
+One application key pair can be used to authenticate different personal Telegram accounts. Each successful login creates an account-specific MTProto session. In the current product, one Telegram account is connected at a time.
 
-## 3. Дополнительные варианты получения данных
+Storage is split:
+- `tg_app_credentials`: encrypted application API ID and API Hash.
+- `tg_account`: encrypted user session, connection state and minimal account profile.
 
-### 3.1. Пользовательское подтверждение/передача
+Logging out clears the user session, but does not delete application credentials. The keys are not returned to the browser.
 
-Telegram Bot API содержит `request_users`: в private chat пользователь может выбрать подходящих пользователей через клиент Telegram, после чего бот получает service message `users_shared` с выбранными идентификаторами. Это добровольный пользовательский механизм передачи выбранных профилей, а не каталог пользователей и не разрешение отправлять этим людям сообщения.
+For backward compatibility, migration `0003_account_credentials_no_bot.sql` moves encrypted keys from the old `tg_account` columns to `tg_app_credentials` before clearing the old fields.
 
-Другой вариант — пользователь делится контактом (`request_contact`), но телефон следует собирать только при отдельной необходимости и ясном объяснении цели.
+## 3. Login flows
 
-### 3.2. Конкретная группа или канал: MTProto
+Primary flow: QR authorization.
+1. The Worker starts the Telegram client in the Durable Object.
+2. GramJS obtains an MTProto login token.
+3. The browser renders the `tg://login?token=...` QR code.
+4. The user scans it in Telegram → Settings → Devices → Link Desktop Device.
+5. The resulting authorized session is encrypted and stored in D1.
 
-Telegram MTProto содержит метод `channels.getParticipants`, который возвращает участников указанной супергруппы/канала. Документация указывает, что метод доступен и пользователям, и ботам, но среди ошибок указан `CHAT_ADMIN_REQUIRED`; при отсутствии членства в приватном канале возможен `CHANNEL_PRIVATE`.
+Alternative flow: phone number, Telegram code and optional two-step verification password. Both flows use the same connected personal account and session storage.
 
-Вывод: возможно исследовать точечное получение участников источника, где владелец системы имеет законный и фактический доступ, а Telegram-клиент/бот имеет необходимые права. Это отдельный модуль с проверкой каждого источника, ограничениями и логированием. Нельзя трактовать это как право на глобальный поиск, обход приватности или массовый сбор.
+## 4. Cloudflare Workers WSS transport
 
-MTProto user-account session требует отдельной авторизации, API ID/API hash и безопасного хранения сессии. Официальная документация предупреждает, что API-клиенты отслеживаются на предмет злоупотреблений, а использование API для flooding/spam может привести к постоянной блокировке. Для serverless Worker с короткими HTTP-вызовами этот вариант архитектурно сложнее, чем Bot API webhook.
+Cloudflare Workers do not expose `window`, so GramJS classifies this runtime as Node. Its default DC resolver can therefore choose a direct IP address even though this integration uses WebSockets over TLS.
 
-## 4. Отправка сообщений и согласие
+The application explicitly maps Telegram DC IDs to Telegram web hostnames for WSS:
 
-В проекте действует следующий invariant:
+| DC | Host |
+|---:|---|
+| 1 | `pluto.web.telegram.org` |
+| 2 | `venus.web.telegram.org` |
+| 3 | `aurora.web.telegram.org` |
+| 4 | `vesta.web.telegram.org` |
+| 5 | `flora.web.telegram.org` |
 
-`sendAllowed = lead.consent_status === 'granted' AND lead not blocked AND target chat is a private chat already opened by the user`.
+The same resolver is used for restored sessions, DC migration and download DC requests. The initial unauthenticated session starts on DC4. The diagnostic WebSocket and MTProto probe use DC4 as well.
 
-- Согласие запрашивается в сообщении `/start`.
-- Лид добавляется только по нажатию callback-кнопки «Согласен».
-- Кнопка «Не согласен» не создаёт запись лида.
-- `/stop` отзывает согласие и должен исключать пользователя из любой будущей очереди.
-- Любой будущий chat queue worker обязан повторно проверять согласие непосредственно перед отправкой.
-- Отдельно хранится событие согласия/отзыва.
+This change addresses the known failure mode in which a WebSocket constructor opens but the first MTProto request (`GetNearestDc`) never completes because the transport selected an IP-based endpoint.
 
-Слова согласия, состав сохраняемых данных и ссылка на политику обработки должны пройти юридическую проверку перед реальным сбором пользователей. Текст согласия в прототипе — технический пример, а не юридическое заключение.
+## 5. Supported data collection and boundaries
 
-## 5. Webhook security
+The monitor reads messages from groups, supergroups and channel discussion groups that are already available to the connected account and explicitly selected by the application owner.
 
-Прототип использует:
+It does not:
+- provide a global Telegram user search;
+- scrape arbitrary users or private chats the account cannot access;
+- bypass membership, privacy or Telegram API restrictions;
+- send unsolicited messages or automate cold outreach.
 
-- HTTPS endpoint.
-- Секрет Telegram `secret_token` при `setWebhook`.
-- Проверку заголовка `X-Telegram-Bot-Api-Secret-Token`.
-- Отдельный `SETUP_TOKEN` для защищённой регистрации webhook.
-- Отсутствие bot token на стороне браузера.
-- Allowlist типов update: `message`, `callback_query`.
-- Уникальность `update_id` и claim состояния для защиты от обычных повторов.
+Only information available through Telegram for the connected account is collected. Phone numbers may be absent because Telegram privacy settings restrict visibility; the product does not bypass those settings.
 
-## 6. Что проверять на следующих этапах
+The current build is a read-only monitor. Sending messages, changing profiles and the future auto-chat queue are not enabled in this version.
 
-1. На этапе 8 — выбрать реальные типы источников, которыми владеет пользователь/где имеет необходимые права.
-2. Если нужны списки участников конкретных каналов — отдельный proof-of-concept `channels.getParticipants` на доступном тестовом чате до включения в продукт.
-3. Согласовать законное основание и текст уведомления/согласия для выбранного источника.
-4. Для авто-чата — передавать только тех, у кого подтверждённое разрешение на сообщения.
+## 6. Diagnostics and verification boundary
 
-## 7. Официальные источники
+The Diagnostics screen checks, in order:
+1. Worker admin token and encryption secret.
+2. Durable Object binding.
+3. D1 schema including migration 0003.
+4. GramJS module loading.
+5. WSS connection to the DC4 hostname.
+6. MTProto encrypted handshake using `help.getNearestDc`.
+7. QR-token export.
 
-- Telegram Bot API: https://core.telegram.org/bots/api
-- Bots introduction: https://core.telegram.org/bots
-- Bots FAQ: https://core.telegram.org/bots/faq
-- MTProto `channels.getParticipants`: https://core.telegram.org/method/channels.getParticipants
-- Obtaining Telegram API ID: https://core.telegram.org/api/obtaining_api_id
+A successful generic WebSocket handshake is not proof that MTProto works. The MTProto and QR-token checks must also pass.
 
-## 6. Дополнение к v0.1.2 — подключение пользовательского аккаунта (MTProto)
-
-По решению владельца продукта основной способ подключения — **вход в личный аккаунт** (как «ещё одно устройство») через Telegram Client API (MTProto), а не только через бота.
-
-| Вопрос | Решение в 0.1.2 |
-|---|---|
-| Библиотека | GramJS (`telegram` на npm), подключается при сборке в Cloudflare. |
-| Транспорт | WebSocket (`wss://…web.telegram.org/apiws`), так как Workers не открывают произвольные TCP-соединения так, как Node.js. |
-| Вход | QR (`auth.exportLoginToken`) и телефон + код (+ пароль 2FA). Нужны `api_id`/`api_hash` с my.telegram.org. |
-| Где живёт соединение | Durable Object `TelegramSession`; опрос чатов по будильнику (alarm), а не постоянным прослушиванием. |
-| Где хранится вход | Строка сессии шифруется AES-GCM (`APP_SECRET`) и лежит в D1. |
-| Что делает программа | Только чтение выбранных групп/каналов и комментариев. Whitelist методов в `src/tg/do.js`; удаление аккаунта и произвольные RPC недоступны. |
-| Комментарии каналов | Лежат в привязанной группе обсуждения; адаптер определяет её через `channels.getFullChannel`. |
-| Телефон автора | Виден только при разрешающей приватности или если человек в контактах; иначе `Nope`. |
-| **Статус проверки** | **Не подтверждено на живом Telegram.** Совместимость GramJS с Workers проверяется кнопкой «Диагностика» после публикации. |
-
-Риски аккаунта: Telegram может ограничить аккаунт при частых запросах и действиях, похожих на автоматизацию. Поэтому опрос редкий, есть паузы и обработка FLOOD_WAIT, а для тестов рекомендуется отдельный аккаунт. Сбор данных людей из чатов для рассылок подпадает под законодательство о персональных данных; отправка нежелательных сообщений запрещена правилами Telegram — в продукт она не закладывается (см. ТЗ, п. 6.3).
+Unit tests verify endpoint selection, login state handling, session encryption and database migration. They do not prove that an actual deployed Cloudflare Worker can complete a live Telegram login. That final acceptance check must be run in the deployed environment using the user's application credentials.
