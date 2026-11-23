@@ -33,10 +33,26 @@ test('credentials are validated and stored encrypted', async () => {
   await assert.rejects(() => engine.saveCredentials('1234567', 'short'), /API hash/);
   const st = await engine.saveCredentials('1234567', API_HASH.toUpperCase());
   assert.equal(st.hasCredentials, true);
-  const row = db.raw.prepare('SELECT * FROM tg_account WHERE id = 1').get();
-  assert.ok(!row.api_hash_enc.includes(API_HASH), 'api hash must not be stored in plaintext');
-  assert.equal(await decryptSecret(SECRET, row.api_id_enc), '1234567');
-  assert.equal(await decryptSecret(SECRET, row.api_hash_enc), API_HASH);
+  const account = db.raw.prepare('SELECT * FROM tg_account WHERE id = 1').get();
+  assert.equal(account.api_id_enc, null, 'app credentials are not stored with the user account');
+  assert.equal(account.api_hash_enc, null, 'app credentials are not stored with the user account');
+  const creds = db.raw.prepare('SELECT * FROM tg_app_credentials WHERE id = 1').get();
+  assert.ok(!creds.api_hash_enc.includes(API_HASH), 'api hash must not be stored in plaintext');
+  assert.equal(await decryptSecret(SECRET, creds.api_id_enc), '1234567');
+  assert.equal(await decryptSecret(SECRET, creds.api_hash_enc), API_HASH);
+});
+
+test('application credentials persist independently from user account login/logout', async () => {
+  const { engine, db, restart } = setup();
+  await engine.saveCredentials('1234567', API_HASH);
+  const before = db.raw.prepare('SELECT COUNT(*) AS n FROM tg_app_credentials').get().n;
+  await engine.logout();
+  const again = restart();
+  const status = await again.status();
+  assert.equal(status.hasCredentials, true);
+  assert.equal(status.credentialsSource, 'saved');
+  assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM tg_app_credentials').get().n, before);
+  assert.equal(db.raw.prepare('SELECT session_enc FROM tg_account WHERE id = 1').get().session_enc, null);
 });
 
 test('login without credentials is refused with a clear message', async () => {
