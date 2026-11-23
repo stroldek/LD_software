@@ -82,11 +82,11 @@ export class TgEngine {
     if (this.envCreds.apiId && this.envCreds.apiHash) {
       return { apiId: Number(this.envCreds.apiId), apiHash: String(this.envCreds.apiHash), source: 'env' };
     }
-    const acc = await this.store.getAccount();
-    if (acc?.api_id_enc && acc?.api_hash_enc) {
+    const saved = await this.store.getAppCredentials();
+    if (saved?.api_id_enc && saved?.api_hash_enc) {
       return {
-        apiId: Number(await decryptSecret(this.secret, acc.api_id_enc)),
-        apiHash: await decryptSecret(this.secret, acc.api_hash_enc),
+        apiId: Number(await decryptSecret(this.secret, saved.api_id_enc)),
+        apiHash: await decryptSecret(this.secret, saved.api_hash_enc),
         source: 'saved',
       };
     }
@@ -97,13 +97,14 @@ export class TgEngine {
     await this.load();
     // After a Durable Object restart the saved session is dormant; the API asks us to reconnect it in the background.
     if (wake && this.state === 'disconnected' && !this.connecting && !this.flow) this.ensureConnected().catch(() => {});
-    const acc = await this.store.getAccount();
-    const hasCreds = Boolean((this.envCreds.apiId && this.envCreds.apiHash) || (acc?.api_id_enc && acc?.api_hash_enc));
+    const [acc, savedCreds] = await Promise.all([this.store.getAccount(), this.store.getAppCredentials()]);
+    const envConfigured = Boolean(this.envCreds.apiId && this.envCreds.apiHash);
+    const hasCreds = Boolean(envConfigured || (savedCreds?.api_id_enc && savedCreds?.api_hash_enc));
     return {
       state: this.state,
       stage: this.state === 'connecting' ? this.stage : null,
       hasCredentials: hasCreds,
-      credentialsSource: this.envCreds.apiId ? 'env' : (hasCreds ? 'saved' : null),
+      credentialsSource: envConfigured ? 'env' : (hasCreds ? 'saved' : null),
       hasSession: Boolean(acc?.session_enc),
       qr: this.state === 'qr_pending' ? this.qr : null,
       passwordHint: this.state === 'password_needed' ? this.passwordHint : null,
@@ -128,10 +129,10 @@ export class TgEngine {
     const hash = String(apiHash ?? '').trim();
     if (!/^\d{3,12}$/.test(id)) throw new HttpError(400, 'API ID — это число (обычно 7–8 цифр).');
     if (!/^[0-9a-f]{32}$/i.test(hash)) throw new HttpError(400, 'API hash — это 32 символа (цифры и буквы a–f).');
-    await this.store.saveAccount({
-      api_id_enc: await encryptSecret(this.secret, id),
-      api_hash_enc: await encryptSecret(this.secret, hash.toLowerCase()),
-    });
+    await this.store.saveAppCredentials(
+      await encryptSecret(this.secret, id),
+      await encryptSecret(this.secret, hash.toLowerCase()),
+    );
     return this.status();
   }
 
