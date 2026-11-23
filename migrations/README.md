@@ -7,3 +7,7 @@
 - `../docs/FUTURE_SCHEMA.sql` — справочная схема будущих этапов. **Не запускать.**
 
 Применённые файлы не редактируются; новые изменения добавляются файлами `0003_...sql` и далее.
+
+### 0003 — account credentials and bot removal
+
+Apply `0003_account_credentials_no_bot.sql` once after migrations 0001 and 0002. It creates `tg_app_credentials`, moves existing encrypted `api_id` / `api_hash` values from `tg_account`, clears the old columns, removes Bot API consent/update tables, and preserves existing lead rows.
