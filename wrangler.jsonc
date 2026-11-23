@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/cloudflare/workers-sdk/main/packages/wrangler/config-schema.json",
-  "name": "lead-database-manager",
+  "name": "zamovo",
   "main": "src/index.js",
   "compatibility_date": "2026-11-12",
   "compatibility_flags": ["nodejs_compat"],
@@ -13,8 +13,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "lead-database-manager",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_name": "zamovo-db",
+      "database_id": "feffd60c-91ca-4d55-b9e6-b74ba0098b06",
       "migrations_dir": "migrations"
     }
   ],
