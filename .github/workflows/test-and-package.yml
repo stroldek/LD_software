@@ -1,0 +1,38 @@
+name: Test and package
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install
+      - name: Run unit and API tests
+        run: npm test
+      - name: Run SQLite migration tests
+        run: python3 tests/sqlite_schema_test.py
+      - name: Build full ZIP
+        run: |
+          mkdir -p dist
+          zip -r dist/Lead_Database_Manager_v0.1.4.zip . \
+            -x ".git/*" "node_modules/*" "dist/*" ".github/*"
+      - name: Upload complete project ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lead_Database_Manager_v0.1.4
+          path: dist/Lead_Database_Manager_v0.1.4.zip
+          if-no-files-found: error
+          retention-days: 30
