@@ -1,4 +1,4 @@
-/* Lead Database Manager 0.1.2 — browser UI.
+/* ZAMOVO 0.1.4 — browser UI.
    Classic script (not a module) so the interface also opens from a local file; the Excel builder is loaded lazily. */
 (function () {
   'use strict';
@@ -155,7 +155,7 @@
       } else { setPill($('monPill'), '—', 'preview'); $('monText').textContent = 'Нет данных (проверьте миграцию).'; $('monSources').textContent = '—'; }
 
       var items = [
-        ['Ключи my.telegram.org сохранены', !!(st && st.hasCredentials)],
+        ['API-ключи приложения настроены', !!(st && st.hasCredentials)],
         ['Аккаунт Telegram подключён', !!(st && (st.state === 'connected' || st.hasSession))],
         ['Добавлен хотя бы один чат', !!(mon && mon.sources.length)],
         ['Заданы ключевые слова', !!(mon && (mon.settings.matchAny || (mon.settings.keywords || '').trim()))],
@@ -179,7 +179,7 @@
   function renderAccount(s) {
     if (current !== 'account') return;
     var credsPill = $('credsPill');
-    if (s.hasCredentials) setPill(credsPill, s.credentialsSource === 'env' ? 'Заданы в Cloudflare' : 'Сохранены', 'ok'); else setPill(credsPill, 'Нужны', 'error');
+    if (s.hasCredentials) setPill(credsPill, s.credentialsSource === 'env' ? 'Ключи приложения · Cloudflare' : 'Ключи приложения сохранены', 'ok'); else setPill(credsPill, 'Нужны ключи приложения', 'error');
     $('credsForm').hidden = s.credentialsSource === 'env';
 
     var pillMap = { connected: ['Подключён', 'ok'], qr_pending: ['Ждём сканирования', 'preview'], code_pending: ['Ждём код', 'preview'], password_needed: ['Нужен пароль', 'preview'], connecting: ['Соединяемся…', 'preview'], error: ['Ошибка', 'error'], disconnected: ['Сессия сохранена', 'preview'], logged_out: ['Не подключён', 'error'] };
@@ -473,20 +473,6 @@
     });
   }
 
-  // ---------- stage-1 bot webhook (optional) ----------
-  function registerWebhook() {
-    var input = $('setupToken'), result = $('setupResult'), btn = $('registerButton');
-    var token = input.value.trim();
-    result.className = 'result-message flush'; result.textContent = '';
-    if (!token) { result.textContent = 'Введите SETUP_TOKEN.'; result.classList.add('error'); return; }
-    btn.disabled = true;
-    fetch('/api/setup/telegram-webhook', { method: 'POST', headers: { 'X-Setup-Token': token } })
-      .then(function (r) { return r.json().then(function (d) { if (!r.ok || !d.ok) throw new Error(d.error || 'Не удалось зарегистрировать webhook.'); return d; }); })
-      .then(function (d) { result.textContent = 'Webhook зарегистрирован' + (d.bot_username ? ' для @' + d.bot_username : '') + '.'; })
-      .catch(function (e) { result.textContent = e.message; result.classList.add('error'); })
-      .then(function () { input.value = ''; btn.disabled = false; });
-  }
-
   // ---------- init ----------
   function saveCreds(e) {
     e.preventDefault();
@@ -516,7 +502,6 @@
     $('dialogFilter').addEventListener('input', renderDialogs);
     $('exportButton').addEventListener('click', exportExcel);
     $('clearButton').addEventListener('click', clearLeads);
-    $('registerButton').addEventListener('click', registerWebhook);
     $('pageSize').addEventListener('change', function () { leadsState.page = 1; guard(loadLeads); });
     $('prevPage').addEventListener('click', function () { leadsState.page = Math.max(1, leadsState.page - 1); guard(loadLeads); });
     $('nextPage').addEventListener('click', function () { leadsState.page += 1; guard(loadLeads); });
