@@ -1,4 +1,4 @@
 Lead Database Manager / ZAMOVO
-Version: 1.5.0
+Version: 1.5.1
 Build date: 2026-11-24
 Telegram: MTProto personal-account login (QR/phone), no Bot API
