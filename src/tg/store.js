@@ -175,7 +175,26 @@ export function createStore(db) {
     },
     async countGoalLeads({templateId=null,sourceId=null}={}) { const clauses=[]; const args=[]; if(sourceId){clauses.push('source_chat_id=?');args.push(sourceId);} if(templateId){clauses.push('filter_template_id=?');args.push(templateId);} const row=await db.prepare(`SELECT COUNT(*) AS n FROM leads ${clauses.length?'WHERE '+clauses.join(' AND '):''}`).bind(...args).first(); return Number(row?.n||0); },
     async clearLeads() {
+      const before = await Promise.all([
+        db.prepare('SELECT COUNT(*) AS n FROM leads').first(),
+        db.prepare('SELECT COUNT(*) AS n FROM lead_hits').first(),
+      ]);
+      // Collected monitoring results only. Keep credentials, Telegram session, sources,
+      // filter templates, monitoring configuration and the D1 schema intact.
       await db.batch([db.prepare('DELETE FROM lead_hits'), db.prepare('DELETE FROM leads')]);
+      const after = await Promise.all([
+        db.prepare('SELECT COUNT(*) AS n FROM leads').first(),
+        db.prepare('SELECT COUNT(*) AS n FROM lead_hits').first(),
+      ]);
+      if (Number(after[0]?.n || 0) + Number(after[1]?.n || 0) !== 0) {
+        throw new Error('D1 cleanup verification failed: collected rows remain.');
+      }
+      return {
+        deletedLeads: Number(before[0]?.n || 0),
+        deletedHits: Number(before[1]?.n || 0),
+        remainingLeads: Number(after[0]?.n || 0),
+        remainingHits: Number(after[1]?.n || 0),
+      };
     },
   };
 }
