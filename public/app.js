@@ -1,4 +1,4 @@
-/* ZAMOVO 1.5.0 — browser UI.
+/* ZAMOVO 1.5.1 — browser UI.
    Classic script (not a module) so the interface also opens from a local file; the Excel builder is loaded lazily. */
 (function () {
   'use strict';
@@ -302,14 +302,13 @@
 
   // ---------- monitor ----------
   function loadMonitor() {
-    return api('/api/monitor/state').then(function (m) { renderMonitor(m, true); populateTemplateSelects(m.templates||[]); if(m.planGoal)$('contactAccount').value=m.planGoal.contact_username||''; });
+    return api('/api/monitor/state').then(function (m) { var active={}; (m.sources||[]).forEach(function(s){active[String(s.id)]=true;}); dialogsCache.forEach(function(d){d.monitored=!!active[String(d.id)];}); renderMonitor(m, true); populateTemplateSelects(m.templates||[]); if(m.planGoal)$('contactAccount').value=m.planGoal.contact_username||''; if(!$('dialogPicker').hidden)renderDialogs(); });
   }
   function renderMonitor(m, fillForm) {
     if (fillForm) {
       $('keywords').value = m.settings.keywords || '';
       $('phrases').value = m.settings.phrases || '';
       $('matchMode').value = m.settings.matchMode || 'keywords';
-      $('matchAny').checked = !!m.settings.matchAny;
       $('interval').value = m.settings.intervalSeconds;
       $('templateSelect').value = m.settings.activeTemplateId || '';
     }
@@ -343,7 +342,7 @@
   /** Saves keywords / interval. Resolves true on success so callers can chain. */
   function saveRules(e) {
     if (e && e.preventDefault) e.preventDefault();
-    return post('/api/monitor/settings', { keywords: $('keywords').value, phrases: $('phrases').value, matchMode: $('matchMode').value, activeTemplateId: $('templateSelect').value || null, matchAny: $('matchAny').checked, intervalSeconds: Number($('interval').value) })
+    return post('/api/monitor/settings', { keywords: $('keywords').value, phrases: $('phrases').value, matchMode: $('matchMode').value, activeTemplateId: $('templateSelect').value || null, intervalSeconds: Number($('interval').value) })
       .then(function () { if (e) toast('Условия сохранены.'); return true; })
       .catch(function (err) { if (err.status !== 401) toast(err.message); return false; });
   }
@@ -368,7 +367,7 @@
       (r.perSource || []).forEach(function (p) {
         box.appendChild(h('div', { class: 'result-sub' + (p.error ? ' error' : '') }, p.error ? p.title + ': ' + p.error : p.title + ': прочитано ' + num(p.read) + ', совпало ' + num(p.matched) + ', новых ' + num(p.newLeads)));
       });
-      if (r.checked > 0 && r.matched === 0) box.appendChild(h('div', { class: 'result-sub', text: 'Сообщения читаются, но ни одно не содержит ваших слов. Для проверки связи временно включите «Любое сообщение».' }));
+      if (r.checked > 0 && r.matched === 0) box.appendChild(h('div', { class: 'result-sub', text: 'Сообщения читаются, но ни одно не содержит ваших слов. Проверьте ключевые слова и фразы в настройках фильтра.' }));
       return guard(loadMonitor);
     }).catch(function (e) { if (e.status !== 401) { box.className = 'result-box show error'; box.textContent = e.message; } })
       .then(function () { btn.disabled = false; btn.textContent = 'Проверить'; });
@@ -388,10 +387,10 @@
     // Interleave types according to the intended discovery mix 40/40/20. This is only a local-dialog shortlist, not Telegram global search.
     if(cat==='all'){var buckets={group:matches.filter(d=>d.kind==='group'),supergroup:matches.filter(d=>d.kind==='supergroup'),channel:matches.filter(d=>d.kind==='channel')};var order=[];while(buckets.group.length||buckets.supergroup.length||buckets.channel.length){if(buckets.group.length)order.push(buckets.group.shift());if(buckets.supergroup.length)order.push(buckets.supergroup.shift());if(buckets.group.length)order.push(buckets.group.shift());if(buckets.supergroup.length)order.push(buckets.supergroup.shift());if(buckets.channel.length)order.push(buckets.channel.shift());matches=order;}}
     if(!matches.length){list.appendChild(h('li',{class:'muted',text:dialogsCache.length?'Ничего не найдено.':'Чаты не найдены.'}));return;}
-    matches.forEach(function(d){var kind={group:'Чат · 40%',supergroup:'Группа · 40%',channel:'Канал · 20%'}[d.kind]||d.kind;var check=h('input',{type:'checkbox',class:'potential-check',value:d.id,disabled:d.monitored});var title=h('span',{class:'picker-title',text:d.title});var addBtn=h('button',{class:'button small'+(d.monitored?' button-quiet':''),type:'button',disabled:d.monitored,text:d.monitored?'В мониторинге':'Добавить'});addBtn.addEventListener('click',function(){addDialogSource(d,addBtn);});list.appendChild(h('li',{},check,title,h('small',{text:kind+(d.members?' · '+num(d.members)+' уч.':'')}),addBtn));});
+    matches.forEach(function(d){var kind={group:'Чат',supergroup:'Группа',channel:'Канал'}[d.kind]||d.kind;var check=h('input',{type:'checkbox',class:'potential-check',value:d.id,disabled:d.monitored,'aria-label':'Выбрать '+d.title});var title=h('span',{class:'picker-title',text:d.title});var meta=h('span',{class:'potential-meta',text:kind+(d.members?' · '+num(d.members)+' уч.':'')});var addBtn=h('button',{class:'button small'+(d.monitored?' button-quiet':''),type:'button',disabled:d.monitored,text:d.monitored?'В мониторинге':'Добавить'});addBtn.addEventListener('click',function(){addDialogSource(d,addBtn);});var choice=h('label',{class:'potential-check-wrap'},check,h('span',{class:'sr-only',text:'Выбрать источник'}));list.appendChild(h('li',{class:'potential-source-row'+(d.monitored?' is-monitored':'')},choice,title,meta,addBtn));});
   }
   function addDialogSource(d,btn){btn.disabled=true;btn.textContent='…';post('/api/monitor/sources',{id:d.id}).then(function(){d.monitored=true;toast('Добавлен источник: '+d.title);renderDialogs();return loadMonitor();}).catch(function(e){btn.disabled=false;btn.textContent='Добавить';if(e.status!==401)toast(e.message);});}
-  function addSelectedSources(){var ids=Array.prototype.map.call(document.querySelectorAll('.potential-check:checked'),function(c){return c.value;});if(!ids.length){toast('Отметьте источники для добавления.');return;}var button=$('addSelectedSources');button.disabled=true;var done=0;ids.reduce(function(p,id){return p.then(function(){return post('/api/monitor/sources',{id:id}).then(function(){done++;});});},Promise.resolve()).then(function(){toast('Добавлено источников: '+done);return loadMonitor();}).catch(function(e){toast('Добавлено '+done+' из '+ids.length+'. Ошибка: '+e.message);}).finally(function(){button.disabled=false;renderDialogs();});}
+  function addSelectedSources(){var ids=Array.prototype.map.call(document.querySelectorAll('#dialogList .potential-check:checked:not(:disabled)'),function(c){return c.value;});if(!ids.length){toast('Отметьте источники для добавления.');return;}var button=$('addSelectedSources');button.disabled=true;var done=0;ids.reduce(function(p,id){return p.then(function(){return post('/api/monitor/sources',{id:id}).then(function(){done++;});});},Promise.resolve()).then(function(){toast('Добавлено источников: '+done);return loadMonitor();}).catch(function(e){toast('Добавлено '+done+' из '+ids.length+'. Ошибка: '+e.message);}).finally(function(){button.disabled=false;renderDialogs();});}
 
   // ---------- leads ----------
   function loadLeads() {
@@ -451,7 +450,7 @@
 
   function clearLeads() {
     var dialog=$('clearPasswordModal'),input=$('clearPasswordInput');input.value='';
-    dialog.addEventListener('close',function once(){dialog.removeEventListener('close',once);if(dialog.returnValue!=='ok')return;var password=input.value;input.value='';if(!password){toast('Введите пароль панели.');return;}guard(function(){return post('/api/leads/clear',{confirmPassword:password}).then(function(){toast('База очищена.');leadsState.page=1;return loadLeads();});});});
+    dialog.addEventListener('close',function once(){dialog.removeEventListener('close',once);if(dialog.returnValue!=='ok')return;var password=input.value;input.value='';if(!password){toast('Введите пароль панели.');return;}guard(function(){return post('/api/leads/clear',{confirmPassword:password}).then(function(result){var d=result&&result.data||{};toast('D1 очищена: удалено лидов '+num(d.deletedLeads||0)+', совпадений '+num(d.deletedHits||0)+'.');leadsState.page=1;return loadLeads();});});});
     if(dialog.showModal)dialog.showModal();else {var p=window.prompt('Введите пароль панели для очистки базы');if(p)guard(function(){return post('/api/leads/clear',{confirmPassword:p}).then(function(){toast('База очищена.');leadsState.page=1;return loadLeads();});});}
   }
 

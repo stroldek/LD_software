@@ -61,13 +61,14 @@
           </article>
           <article class="dashboard-card"><div class="eyebrow">ЛИДЫ</div><h2>Поступления</h2><div class="metric-row metric-row-compact"><div><span>За сегодня</span><strong id="dashLeadsToday">0</strong></div><div><span>За неделю</span><strong id="dashLeadsWeek">0</strong></div><div><span>За месяц</span><strong id="dashLeadsMonth">0</strong></div></div><p class="dash-note">Конверсия: обработанные сообщения → лиды</p><strong class="dash-conversion" id="dashConversion">—</strong></article>
           <article class="dashboard-card"><div class="eyebrow">ПЛАН</div><h2>Цель по лидам</h2><div class="form-row tight plan-row"><div class="field"><label for="planTarget">Цель</label><input id="planTarget" type="number" min="0" max="1000000" placeholder="Например, 100"></div><div class="field grow"><label for="planTemplate">Шаблон (опционально)</label><select id="planTemplate"><option value="">Все фильтры</option></select></div><div class="field grow"><label for="planSource">Источник (опционально)</label><select id="planSource"><option value="">Все источники</option></select></div></div><div class="form-row tight"><button class="button button-primary" id="savePlanButton">Сохранить цель</button><span id="planStatus" class="muted">Цель не задана</span></div><small class="hint">При достижении цели уведомление появится в журнале; если указан контакт Telegram — будет отправлено одно сообщение.</small></article>
-          <article class="dashboard-card dashboard-wide"><div class="dash-title"><div><div class="eyebrow">РАСХОДЫ РЕСУРСОВ</div><h2>Оценка бесплатных лимитов Cloudflare</h2></div><span class="status-pill preview">Оценка</span></div><div class="resource-grid"><div><span>За сегодня</span><strong id="resourceToday">—</strong><small>циклы мониторинга</small></div><div><span>За неделю</span><strong id="resourceWeek">—</strong><small>обработанные сообщения</small></div><div><span>AI tokens</span><strong>0</strong><small>AI в версии отсутствует</small></div></div><div class="free-limits"><strong>Бесплатный план Cloudflare</strong><span>Workers: 100 000 запросов/сутки · D1: 5 млн прочитанных строк/сутки · 100 000 записанных строк/сутки · 500 МБ на базу</span><span>Оценка потолка лидов: ≈33 000 совпавших сообщений/сутки (3 записи D1 на совпадение, без накладных расходов). Реальная ёмкость ниже.</span></div><p class="dash-note" id="resourceEstimate">AI tokens: 0 — AI-модуль не подключён.</p></article>
+          <article class="dashboard-card dashboard-wide"><div class="dash-title"><div><div class="eyebrow">РАСХОДЫ РЕСУРСОВ</div><h2>Оценка бесплатных лимитов Cloudflare</h2></div><span class="status-pill preview resource-help" tabindex="0" aria-label="Показать оценку бесплатных лимитов">Оценка<span class="resource-tooltip" role="tooltip"><strong>Бесплатный план Cloudflare</strong><br>Workers: 100 000 запросов/сутки · D1: 5 млн прочитанных строк/сутки · 100 000 записанных строк/сутки · 500 МБ на базу.<br>Оценка потолка: около 33 000 совпавших сообщений/сутки при трёх записях D1 на совпадение, без накладных расходов. Реальная ёмкость ниже.</span></span></div><div class="resource-grid"><div><span>За сегодня</span><strong id="resourceToday">—</strong><small>циклы мониторинга</small></div><div><span>За неделю</span><strong id="resourceWeek">—</strong><small>обработанные сообщения</small></div><div><span>AI tokens</span><strong>0</strong><small>AI в версии отсутствует</small></div></div><p class="dash-note" id="resourceEstimate">AI tokens: 0 — AI-модуль не подключён.</p></article>
         </div>
       </section>
 
       <!-- ACCOUNT -->
       <section class="page" data-page="account" hidden>
-        <div class="panel">
+        <div class="account-grid">
+        <div class="panel account-credentials">
           <div class="panel-head"><div><div class="eyebrow">ШАГ 1</div><h2>Ключи приложения Telegram</h2></div><span class="status-pill" id="credsPill">—</span></div>
           <p class="panel-text">API ID и API Hash идентифицируют приложение ZAMOVO, а не Telegram-аккаунт. Один набор ключей можно использовать для входа в разные личные аккаунты: откройте <code>my.telegram.org</code> → войдите по номеру → <b>API development tools</b> → создайте приложение (название любое) → скопируйте <b>api_id</b> и <b>api_hash</b>.</p>
           <form class="form-row" id="credsForm" autocomplete="off">
@@ -76,13 +77,14 @@
             <button class="button" type="submit" id="credsButton">Сохранить</button>
           </form>
           <small class="hint" id="credsHint">Ключи приложения хранятся на сервере в зашифрованном виде и никогда не возвращаются в браузер. Они не привязаны к аккаунту, который вы подключаете ниже.</small>
-          <div class="field contact-field"><label for="contactAccount">Контактный аккаунт для уведомления о закрытии плана</label><input id="contactAccount" type="text" placeholder="@username" maxlength="33"><button class="button button-quiet small" id="saveContactButton" type="button">Сохранить контакт</button></div>
-          <p class="panel-text">Ниже подключается отдельный личный аккаунт Telegram. Можно подключить аккаунт, отличный от того, с которого создавались API-ключи. Авторизация и сохранённая сессия относятся только к подключённому аккаунту.</p>
+          <p class="panel-text">API-ключи не привязаны к подключённому аккаунту. Авторизация и сохранённая сессия относятся только к аккаунту во втором блоке.</p>
         </div>
 
-        <div class="panel section-block">
+        <div class="panel account-connection">
           <div class="panel-head"><div><div class="eyebrow">ШАГ 2</div><h2>Подключение аккаунта</h2></div><span class="status-pill" id="loginPill">—</span></div>
           <div id="loginBody"></div>
+          <div class="field contact-field"><label for="contactAccount">Контактный аккаунт для уведомления о закрытии плана</label><input id="contactAccount" type="text" placeholder="@username" maxlength="33"><button class="button button-quiet small" id="saveContactButton" type="button">Сохранить контакт</button></div>
+        </div>
         </div>
 
         <div class="panel section-block">
@@ -104,7 +106,6 @@
               <div class="field"><label for="matchMode">Тип фильтра</label><select id="matchMode"><option value="keywords">По ключевым словам</option><option value="phrases">По фразам / предложениям</option><option value="both">Оба варианта</option></select></div>
               <div class="field"><label for="keywords">Ключевые слова (отдельное поле)</label><textarea id="keywords" rows="3" placeholder="куплю&#10;оптом&#10;ищу поставщика"></textarea></div>
               <div class="field"><label for="phrases">Ключевые фразы и словосочетания (отдельное поле)</label><textarea id="phrases" rows="3" placeholder="ищу поставщика упаковки&#10;готов купить оптом"></textarea></div>
-              <label class="check"><input type="checkbox" id="matchAny"> <span>Любое сообщение считать подходящим (только для проверки связи)</span></label>
               <div class="form-row tight"><div class="field"><label for="interval">Проверять каждые, сек</label><input id="interval" type="number" min="15" max="3600" value="30"></div><button class="button" type="submit">Сохранить условия</button></div>
               <small class="hint">Поиск без учёта регистра и «ё/е». Слова и фразы вводятся отдельно; длинная фраза снижает шум.</small>
             </form>
@@ -150,7 +151,7 @@
         </div>
       </section>
 
-      <footer class="footer"><span>LEAD DATABASE MANAGER</span><span>Сборка 1.5.0 · 24.11.2026</span></footer>
+      <footer class="footer"><span>LEAD DATABASE MANAGER</span><span>Сборка 1.5.1 · 24.11.2026</span></footer>
     </main>
   </div>
 
