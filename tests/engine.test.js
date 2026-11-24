@@ -123,7 +123,7 @@ test('restart: saved session reconnects without a new login', async () => {
 test('revoked session is detected: logged out, monitoring stopped', async () => {
   const ctx = setup();
   await loggedIn(ctx);
-  await ctx.engine.saveMonitorSettings({ matchAny: true, running: true });
+  await ctx.engine.saveMonitorSettings({ keywords: 'revoked', running: true });
   ctx.world.sessionValid = false;
   const again = ctx.restart();
   await assert.rejects(() => again.ensureConnected());
@@ -209,7 +209,7 @@ test('comments of a channel are read from the linked discussion group', async ()
   const ctx = populated();
   await loggedIn(ctx);
   await ctx.engine.addSource('-1002');
-  await ctx.engine.saveMonitorSettings({ matchAny: true, running: true });
+  await ctx.engine.saveMonitorSettings({ keywords: 'контакты', running: true });
   await ctx.engine.tick();
   ctx.world.say('-1003', 10, 'Подскажите контакты производителя');
   await ctx.engine.tick();
@@ -273,7 +273,7 @@ test('more than 100 new messages are paged and none are skipped', async () => {
   const ctx = populated();
   await loggedIn(ctx);
   await ctx.engine.addSource('-1001');
-  await ctx.engine.saveMonitorSettings({ matchAny: true, running: true });
+  await ctx.engine.saveMonitorSettings({ keywords: 'сообщение', running: true });
   await ctx.engine.tick();
   for (let i = 1; i <= 250; i += 1) ctx.world.say('-1001', i, `сообщение ${i}`, { id: String(8000 + i), firstName: 'U', isBot: false });
   await ctx.engine.tick();
@@ -284,7 +284,7 @@ test('Telegram flood-wait pauses polling and is logged; broken chat does not sto
   const ctx = populated();
   await loggedIn(ctx);
   await ctx.engine.addSource('-1001');
-  await ctx.engine.saveMonitorSettings({ matchAny: true, running: true });
+  await ctx.engine.saveMonitorSettings({ keywords: 'жив', running: true });
   await ctx.engine.tick();
   ctx.world.floodOnFetch = true;
   await ctx.engine.tick();
@@ -338,7 +338,7 @@ test('filter templates, run counters and goal alert are saved and measured', asy
   assert.equal(state.resourceTotals.today.cycles,2);
 });
 
-test('monitor cannot start without keywords unless "any message" is on', async () => {
+test('monitor cannot start without keywords or phrases', async () => {
   const ctx = populated();
   await loggedIn(ctx);
   await assert.rejects(() => ctx.engine.saveMonitorSettings({ running: true }), /ключевые слова/);
