@@ -1,6 +1,6 @@
 # Telegram integration: supported user-account model
 
-**Версия:** 0.1.4 · **Дата:** 23.11.2026
+**Версия:** 1.5.0 · **Дата:** 24.11.2026
 
 ## 1. Chosen integration
 
@@ -23,7 +23,7 @@ Storage is split:
 
 Logging out clears the user session, but does not delete application credentials. The keys are not returned to the browser.
 
-For backward compatibility, migration `0003_account_credentials_no_bot.sql` moves encrypted keys from the old `tg_account` columns to `tg_app_credentials` before clearing the old fields.
+For backward compatibility, migration `0003_account_credentials_no_bot.sql` moves encrypted keys from the old `tg_account` columns to `tg_app_credentials` before clearing the old fields. Version 1.5.0 adds migration `0004_dashboard_templates_phrases.sql` for phrase filters, templates, run counters, lead message dates and plan goals.
 
 ## 3. Login flows
 

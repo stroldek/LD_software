@@ -7,6 +7,7 @@ MIGRATIONS = [
     ROOT / 'migrations' / '0001_stage1_prototype.sql',
     ROOT / 'migrations' / '0002_live_telegram_test.sql',
     ROOT / 'migrations' / '0003_account_credentials_no_bot.sql',
+    ROOT / 'migrations' / '0004_dashboard_templates_phrases.sql',
 ]
 
 with tempfile.TemporaryDirectory() as tmp:
@@ -26,15 +27,16 @@ with tempfile.TemporaryDirectory() as tmp:
     # Migration 0003 must move app credentials, retain the account row and leads,
     # and retire all Bot API persistence structures.
     conn.executescript(MIGRATIONS[2].read_text(encoding='utf-8'))
+    conn.executescript(MIGRATIONS[3].read_text(encoding='utf-8'))
 
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    expected = {'schema_migrations', 'leads', 'tg_account', 'tg_app_credentials', 'monitor_sources', 'monitor_settings'}
+    expected = {'schema_migrations', 'leads', 'tg_account', 'tg_app_credentials', 'monitor_sources', 'monitor_settings', 'filter_templates', 'monitoring_run_stats', 'plan_goal'}
     assert expected.issubset(tables), f'Missing tables: {expected - tables}'
     assert 'consent_events' not in tables
     assert 'telegram_updates' not in tables
 
     versions = {row[0] for row in conn.execute('SELECT version FROM schema_migrations')}
-    assert versions == {'0001_stage1_prototype', '0002_live_telegram_test', '0003_account_credentials_no_bot'}
+    assert versions == {'0001_stage1_prototype', '0002_live_telegram_test', '0003_account_credentials_no_bot', '0004_dashboard_templates_phrases'}
 
     app_creds = conn.execute('SELECT api_id_enc, api_hash_enc FROM tg_app_credentials WHERE id = 1').fetchone()
     assert app_creds == ('enc-api-id', 'enc-api-hash'), app_creds
@@ -51,7 +53,7 @@ with tempfile.TemporaryDirectory() as tmp:
     except sqlite3.IntegrityError:
         pass
 
-    print('PASS: migrations 0001, 0002 and 0003 apply in order')
+    print('PASS: migrations 0001–0004 apply in order')
     print('PASS: existing encrypted API credentials are preserved in the app-credentials table')
     print('PASS: user-account session/status row is retained and API key columns are cleared')
     print('PASS: Bot API consent and update tables are removed')

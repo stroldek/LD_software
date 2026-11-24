@@ -2,7 +2,7 @@ import { safeEqual } from './lib/crypto.js';
 import { createStore } from './tg/store.js';
 import { HttpError } from './tg/engine.js';
 
-const VERSION = '0.1.4';
+const VERSION = '1.5.0';
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store, max-age=0',
@@ -88,7 +88,7 @@ function formatKyiv(value) {
   return KYIV.format(date);
 }
 
-export const EXPORT_HEADERS = ['Имя', 'Ник', 'Номер телефона', 'Источник', 'Дата добавления в базу', 'Текст сообщения (триггер)'];
+export const EXPORT_HEADERS = ['Имя', 'Ник', 'Номер телефона', 'Источник', 'Дата сообщения', 'Дата добавления в базу', 'Текст сообщения (триггер)'];
 const EXPORT_PAGE = 500;
 
 export function leadToExportRow(l) {
@@ -98,6 +98,7 @@ export function leadToExportRow(l) {
     l.username ? `@${l.username}` : '—',
     l.phone || 'Nope',
     l.source_title || '—',
+    formatKyiv(l.trigger_message_date || l.created_at),
     formatKyiv(l.created_at),
     l.trigger_text || '',
   ];
@@ -129,7 +130,7 @@ async function workerConfigSteps(env) {
   let schema = false;
   let detail = '';
   if (env.DB) {
-    try { await env.DB.prepare('SELECT 1 FROM tg_app_credentials LIMIT 1').first(); schema = true; } catch { detail = 'Выполните миграцию 0003 в D1 → SQL Console.'; }
+    try { await env.DB.prepare('SELECT 1 FROM filter_templates LIMIT 1').first(); schema = true; } catch { detail = 'Выполните миграцию 0004 в D1 → SQL Console.'; }
   } else detail = 'Нет binding DB.';
   steps.push({ name: 'schema', title: 'База D1: миграция 0003 применена', ok: schema, detail });
   return steps;
@@ -163,11 +164,24 @@ async function adminApi(request, env, url) {
   }
 
   if (route === 'GET /api/monitor/state') return json({ ok: true, data: await call('monitorState') });
+  if (route === 'GET /api/monitor/templates') return json({ ok: true, data: await store.listTemplates() });
+  if (route === 'POST /api/monitor/templates') { const b=await readJson(request); return json({ ok:true, data:await call('saveFilterTemplate',b) }); }
+  if (route === 'POST /api/monitor/templates/delete') { const b=await readJson(request); return json({ ok:true, data:await call('deleteFilterTemplate',b.id) }); }
+  if (route === 'POST /api/monitor/templates/apply') { const b=await readJson(request); return json({ ok:true, data:await call('applyFilterTemplate',b.id) }); }
+  if (route === 'GET /api/plan') return json({ ok:true, data:{ goal:await store.getPlanGoal(), runStats:await store.getRunStats(), leadPeriods:await store.getLeadPeriodCounts() } });
+  if (route === 'POST /api/plan') { const b=await readJson(request); return json({ ok:true, data:await call('savePlanGoal',b) }); }
   if (route === 'POST /api/monitor/settings') { const b = await readJson(request); return json({ ok: true, data: await call('saveMonitorSettings', b) }); }
   if (route === 'POST /api/monitor/sources') { const b = await readJson(request); return json({ ok: true, data: await call('addSource', b.id) }); }
   if (route === 'POST /api/monitor/sources/remove') { const b = await readJson(request); return json({ ok: true, data: await call('removeSource', b.id) }); }
   if (route === 'POST /api/monitor/check') { const b = await readJson(request); return json({ ok: true, data: await call('runCheck', { backfill: b.backfill }) }); }
 
+  if (route === 'GET /api/monitor/templates') return json({ ok: true, data: await store.listTemplates() });
+  if (route === 'POST /api/monitor/templates') { const b=await readJson(request); return json({ ok:true, data:await call('saveFilterTemplate',b) }); }
+  if (route === 'POST /api/monitor/templates/delete') { const b=await readJson(request); return json({ ok:true, data:await call('deleteFilterTemplate',b.id) }); }
+  if (route === 'POST /api/monitor/templates/apply') { const b=await readJson(request); return json({ ok:true, data:await call('applyFilterTemplate',b.id) }); }
+  if (route === 'GET /api/plan') return json({ ok:true, data:{ goal:await store.getPlanGoal(), runStats:await store.getRunStats(), leadPeriods:await store.getLeadPeriodCounts() } });
+  if (route === 'POST /api/plan') { const b=await readJson(request); return json({ ok:true, data:await call('savePlanGoal',b) }); }
+  if (route === 'POST /api/plan/contact') { const b=await readJson(request); return json({ ok:true, data:await call('savePlanContact',b) }); }
   if (route === 'GET /api/leads') {
     const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit') || '25', 10) || 25, 1), 100);
     const page = Math.max(parseInt(url.searchParams.get('page') || '1', 10) || 1, 1);
@@ -176,7 +190,7 @@ async function adminApi(request, env, url) {
   }
   if (route === 'POST /api/leads/clear') {
     const b = await readJson(request);
-    if (b.confirm !== 'DELETE') throw new HttpError(400, 'Нужно подтверждение.');
+    if (!await safeEqual(String(b.confirmPassword || ''), env.ADMIN_TOKEN || '')) throw new HttpError(400, 'Пароль подтверждения не совпадает.');
     await store.clearLeads();
     await store.addLog('warn', 'Тестовая база лидов очищена вручную');
     return json({ ok: true });

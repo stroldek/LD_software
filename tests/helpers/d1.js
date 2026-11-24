@@ -7,10 +7,10 @@ class Stmt {
   bind(...args) { return new Stmt(this.db, this.sql, args); }
   async first() { return this.db.prepare(this.sql).get(...this.args) ?? null; }
   async all() { return { results: this.db.prepare(this.sql).all(...this.args) }; }
-  async run() { const r = this.db.prepare(this.sql).run(...this.args); return { meta: { changes: Number(r.changes) } }; }
+  async run() { const r = this.db.prepare(this.sql).run(...this.args); return { meta: { changes: Number(r.changes), last_row_id: Number(r.lastInsertRowid || 0) } }; }
 }
 
-export function createD1(migrationFiles = ['0001_stage1_prototype.sql', '0002_live_telegram_test.sql', '0003_account_credentials_no_bot.sql']) {
+export function createD1(migrationFiles = ['0001_stage1_prototype.sql', '0002_live_telegram_test.sql', '0003_account_credentials_no_bot.sql', '0004_dashboard_templates_phrases.sql']) {
   const db = new DatabaseSync(':memory:');
   for (const f of migrationFiles) db.exec(fs.readFileSync(new URL(`../../migrations/${f}`, import.meta.url), 'utf8'));
   return {

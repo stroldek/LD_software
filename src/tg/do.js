@@ -7,7 +7,7 @@ import { makeGramClient, runDiagnostics } from './gramjs.js';
 
 const ALLOWED = new Set([
   'status', 'saveCredentials', 'startQr', 'startPhone', 'submitCode', 'submitPassword', 'cancelLogin', 'logout',
-  'listDialogs', 'addSource', 'removeSource', 'monitorState', 'saveMonitorSettings', 'runCheck', 'runDiagnostics',
+  'listDialogs', 'addSource', 'removeSource', 'monitorState', 'saveMonitorSettings', 'runCheck', 'runDiagnostics', 'saveFilterTemplate', 'deleteFilterTemplate', 'applyFilterTemplate', 'savePlanGoal', 'savePlanContact',
 ]);
 
 export class TelegramSession extends DurableObject {

@@ -12,6 +12,7 @@ export class FakeWorld {
     this.messages = new Map(); // targetId -> [{id,date,text,sender}]
     this.discussions = new Map(); // channelId -> {id,title}
     this.clients = [];
+    this.sentMessages = [];
     this.sessionValid = true;
     this.qrScan = deferred();
     this.need2fa = false;
@@ -45,6 +46,7 @@ class FakeClient {
   }
   async exportSession() { return 'SESSION-STRING-123'; }
   async logOut() { this.loggedOut = true; }
+  async sendMessage(username, message) { this.w.sentMessages.push({ username, message }); }
   async loginQr({ onQr, getPassword, onError }) {
     onQr({ url: 'tg://login?token=AAAA', expiresAt: Date.now() + 30000 });
     await this.w.qrScan.promise;

@@ -307,6 +307,37 @@ test('Telegram flood-wait pauses polling and is logged; broken chat does not sto
   assert.equal(ctx.db.raw.prepare("SELECT COUNT(*) n FROM leads").get().n, 1, 'healthy chat was still processed');
 });
 
+test('filter templates, run counters and goal alert are saved and measured', async () => {
+  const ctx = populated();
+  await loggedIn(ctx);
+  await ctx.engine.addSource('-1001');
+  const saved = await ctx.engine.saveFilterTemplate({name:'Поставщики',keywords:'куплю',phrases:'ищу поставщика упаковки',matchMode:'both',intervalSeconds:30});
+  assert.equal(saved.length,1);
+  const template = saved[0];
+  await ctx.engine.applyFilterTemplate(template.id);
+  const goal = await ctx.engine.savePlanGoal({targetLeads:1,templateId:template.id,sourceId:'-1001',contactUsername:'@ownercontact'});
+  assert.equal(goal.enabled,1);
+  await ctx.engine.saveMonitorSettings({running:true});
+  await ctx.engine.tick();
+  ctx.world.say('-1001',2,'Ищу поставщика упаковки', {id:'1002',firstName:'Покупатель',username:'buyer',isBot:false});
+  await ctx.engine.tick();
+  const stats=await createStore(ctx.db).getRunStats();
+  assert.equal(stats.cycles,2);
+  assert.equal(stats.chats_processed,2);
+  assert.equal(stats.messages_processed,1);
+  assert.equal(stats.leads_generated,1);
+  assert.equal(ctx.world.sentMessages.length,1);
+  assert.match(ctx.world.sentMessages[0].message,/План по лидам 1 — ЗАКРЫТ/);
+  const lead=ctx.db.raw.prepare('SELECT filter_template_id, source_id_for_goal, trigger_message_date FROM leads WHERE telegram_id=?').get('1002');
+  assert.equal(lead.filter_template_id,template.id);
+  assert.equal(lead.source_id_for_goal,'-1001');
+  assert.ok(lead.trigger_message_date);
+  const state=await ctx.engine.monitorState();
+  assert.equal(state.runStats.cycles,2);
+  assert.equal(state.leadPeriods.total,1);
+  assert.equal(state.resourceTotals.today.cycles,2);
+});
+
 test('monitor cannot start without keywords unless "any message" is on', async () => {
   const ctx = populated();
   await loggedIn(ctx);

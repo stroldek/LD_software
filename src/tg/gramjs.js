@@ -72,7 +72,7 @@ function clientOptions(lib) {
     connectionRetries: 2,
     deviceModel: 'Lead Database Manager',
     systemVersion: 'Cloudflare Workers',
-    appVersion: '0.1.4',
+    appVersion: '1.5.0',
     langCode: 'ru',
     systemLangCode: 'ru',
   };
@@ -153,6 +153,11 @@ class GramClient {
 
   async logOut() {
     await this.client.invoke(new this.lib.Api.auth.LogOut());
+  }
+
+  async sendMessage(username, message) {
+    const entity = await this.client.getEntity(String(username));
+    return this.client.sendMessage(entity, { message: String(message) });
   }
 
   async listDialogs() {

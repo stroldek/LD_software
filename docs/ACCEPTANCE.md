@@ -1,32 +1,17 @@
-# Протокол приёмки — v0.1.4
+# Acceptance — v1.5.0
 
-**Объект проверки:** вход личного Telegram-аккаунта, хранение ключей приложения отдельно от сессии, MTProto WSS transport и удаление Bot API runtime.
+## Automated checks
+- `npm test`: Node unit/API tests including phrase matching, template storage, run metrics, goal closure notification and password-protected clear.
+- `python3 tests/sqlite_schema_test.py`: migrations 0001–0004 and preservation of existing account/lead data.
+- `tests/ui_e2e.py`: browser test (requires installed Chromium/Playwright).
 
-## A. Проверки в CI
-
-Для коммита 0.1.4 workflow `Test and package` выполняет:
-- `npm test` — Node unit/API-тесты, включая QR/phone state machine, разделение credentials/session, WSS endpoint resolver и отсутствие старых Bot API маршрутов;
-- `python3 tests/sqlite_schema_test.py` — последовательное применение SQL-миграций 0001–0003 и проверка переноса старых зашифрованных ключей, сохранения аккаунта/лидов и удаления таблиц Bot API;
-- сборку полного ZIP-архива проекта как GitHub Actions artifact.
-
-Количество тестов и конечный статус нужно брать из конкретного GitHub Actions run, а не переносить из предыдущих релизов.
-
-## B. Что тесты не подтверждают
-
-Unit-тесты используют подставной Telegram client, поэтому не могут подтвердить реальный сетевой handshake к Telegram. Они проверяют корректность выбора WSS hostname, логику сессии и работу локальной SQLite-схемы.
-
-**Живой Telegram через опубликованный Cloudflare Worker должен быть проверен отдельно.**
-
-## C. Приёмка после публикации
-
-| № | Действие | Ожидаемый результат |
-|---:|---|---|
-| 1 | Выполнить D1 migration 0003 после уже применённых 0001 и 0002 | Миграция завершается успешно, лиды и session row остаются на месте |
-| 2 | Открыть «Аккаунт Telegram» → «Диагностика» | Конфигурация Worker, D1 (0003), GramJS, WSS, MTProto и QR token — зелёные |
-| 3 | Сохранить API ID / API Hash приложения | Статус «Ключи приложения сохранены»; сами ключи не возвращаются в браузер |
-| 4 | Подключить QR | QR появляется; после сканирования видна карточка подключённого личного аккаунта |
-| 5 | Выйти и подключить другой личный аккаунт теми же API-ключами | API credentials остаются сохранёнными, новая account session создаётся отдельно |
-| 6 | Проверить вход по номеру | Номер → код → необязательный 2FA password приводят к connected |
-| 7 | Проверить мониторинг | Читаются только вручную выбранные чаты, доступные подключённому аккаунту |
-
-Если любой пункт диагностики MTProto/QR остаётся красным, сохранить его точное название, сообщение и длительность — это будет основанием для следующей сетевой диагностики.
+## Manual acceptance
+1. Apply migration 0004 only after 0001–0003 are already present.
+2. Save a filter template with keywords and phrases, switch between matching modes, and apply it again.
+3. Confirm matching phrases are captured; verify trigger message date and database-added date differ where appropriate.
+4. Attempt database clear without password, with wrong password, and with the correct panel password. Only the last should succeed.
+5. Start monitoring and verify elapsed time, cycles, chats and messages reset for this start. Stop and start again to confirm counters reset.
+6. Set a lead target and optionally a template/source; verify the goal is marked closed once and one message is sent to the configured contact username.
+7. Review «Потенциальные источники»: it filters the connected account's available dialogs and supports bulk add to monitoring; it does not search Telegram globally or join communities.
+8. Verify journal is a separate navigation item and sidebar logo has transparent background.
+9. Check exact D1/Workers billing metrics in Cloudflare Analytics; app dashboard activity counts are not exact billing counters.

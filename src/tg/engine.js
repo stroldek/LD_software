@@ -391,15 +391,18 @@ export class TgEngine {
 
   // ---------- monitoring ----------
   async monitorState() {
-    const [settings, sources, log, leadsCount] = await Promise.all([
-      this.store.getSettings(), this.store.listSources(), this.store.listLog(30), this.store.countLeads(),
+    const [settings, sources, log, leadsCount, runStats, leadPeriods, templates, planGoal, resourceTotals] = await Promise.all([
+      this.store.getSettings(), this.store.listSources(), this.store.listLog(30), this.store.countLeads(), this.store.getRunStats(), this.store.getLeadPeriodCounts(), this.store.listTemplates(), this.store.getPlanGoal(), this.store.getResourcePeriodTotals(),
     ]);
-    return { settings, sources, log, leadsCount, telegramState: this.state, pausedUntil: this.pausedUntil > this.now() ? this.pausedUntil : null };
+    return { settings, sources, log, leadsCount, telegramState: this.state, pausedUntil: this.pausedUntil > this.now() ? this.pausedUntil : null, runStats, leadPeriods, templates, planGoal, resourceTotals };
   }
 
   async saveMonitorSettings(patch) {
     const clean = {};
     if (patch.keywords !== undefined) clean.keywords = String(patch.keywords).slice(0, 8000);
+    if (patch.phrases !== undefined) clean.phrases = String(patch.phrases).slice(0, 8000);
+    if (patch.matchMode !== undefined) { if (!['keywords','phrases','both'].includes(patch.matchMode)) throw new HttpError(400, 'Неверный режим фильтра.'); clean.matchMode = patch.matchMode; }
+    if (patch.activeTemplateId !== undefined) clean.activeTemplateId = String(patch.activeTemplateId || '').slice(0,100) || null;
     if (patch.matchAny !== undefined) clean.matchAny = Boolean(patch.matchAny);
     if (patch.intervalSeconds !== undefined) {
       const n = Math.round(Number(patch.intervalSeconds));
@@ -409,13 +412,15 @@ export class TgEngine {
     if (patch.running !== undefined) clean.running = Boolean(patch.running);
     const next = await this.store.saveSettings(clean);
     if (clean.running === true) {
-      if (!next.matchAny && !String(next.keywords).trim()) {
+      if (!next.matchAny && !String(next.keywords).trim() && !String(next.phrases).trim()) {
         await this.store.saveSettings({ running: false });
         throw new HttpError(400, 'Задайте ключевые слова или включите режим «любое сообщение».');
       }
+      await this.store.startRun();
       await this.scheduleAlarm(1500);
       await this.store.addLog('info', 'Мониторинг запущен');
     } else if (clean.running === false) {
+      await this.store.stopRun();
       await this.scheduleAlarm(null);
       await this.store.addLog('info', 'Мониторинг остановлен');
     }
@@ -442,7 +447,9 @@ export class TgEngine {
       messageId: msg.id,
       text: String(msg.text).slice(0, 1000),
       keyword,
-      date: msg.date,
+      date: (typeof msg.date === 'number' || /^\d+$/.test(String(msg.date || ''))) ? new Date(Number(msg.date) * 1000).toISOString() : msg.date,
+      templateId: settings.activeTemplateId || null,
+      sourceId: src.id,
     });
     if (res.alreadyRecorded) stats.repeated += 1;
     else if (res.isNew) stats.newLeads += 1;
@@ -508,7 +515,9 @@ export class TgEngine {
         await this.pollSource(client, src, settings, stats);
         await this.sleep(250);
       }
+      await this.store.bumpRunStats({ cycles: 1, chats: sources.length, messages: stats.checked, leads: stats.newLeads });
       if (stats.newLeads || stats.knownLeads) await this.store.addLog('info', `Проверка: найдено ${stats.matched}, новых лидов ${stats.newLeads}`);
+      await this.evaluatePlanGoal();
       return stats;
     } catch (e) {
       if (!FATAL_SESSION.test(errorCode(e))) await this.store.addLog('error', e instanceof HttpError ? e.message : describeError(e));
@@ -526,7 +535,7 @@ export class TgEngine {
   async runCheck({ backfill = 50 } = {}) {
     const n = Math.min(Math.max(Math.round(Number(backfill) || 50), 1), 200);
     const settings = await this.store.getSettings();
-    if (!settings.matchAny && !String(settings.keywords).trim()) {
+    if (!settings.matchAny && !String(settings.keywords).trim() && !String(settings.phrases).trim()) {
       throw new HttpError(400, 'Задайте ключевые слова или включите режим «любое сообщение».');
     }
     const client = await this.ensureConnected();
@@ -550,7 +559,38 @@ export class TgEngine {
       await this.sleep(250);
     }
     await this.store.addLog('info', `Ручная проверка (последние ${n}): прочитано ${stats.checked}, совпало ${stats.matched}, новых лидов ${stats.newLeads}`);
+    await this.evaluatePlanGoal();
     return { ...stats, perSource };
+  }
+
+  async saveFilterTemplate(payload) {
+    const name=String(payload?.name||'').trim().slice(0,80); if(!name) throw new HttpError(400,'Введите название шаблона.');
+    const settings=await this.store.getSettings();
+    const t={id:String(payload.id||crypto.randomUUID()),name,keywords:String(payload.keywords??settings.keywords).slice(0,8000),phrases:String(payload.phrases??settings.phrases).slice(0,8000),matchMode:payload.matchMode??settings.matchMode,matchAny:Boolean(payload.matchAny??settings.matchAny),intervalSeconds:Math.max(15,Math.min(3600,Number(payload.intervalSeconds??settings.intervalSeconds)||30))};
+    await this.store.saveTemplate(t); return this.store.listTemplates();
+  }
+  async deleteFilterTemplate(id) { await this.store.deleteTemplate(String(id)); const s=await this.store.getSettings(); if(s.activeTemplateId===String(id)) await this.store.saveSettings({activeTemplateId:null}); return this.store.listTemplates(); }
+  async applyFilterTemplate(id) {
+    const list=await this.store.listTemplates(); const t=list.find(x=>x.id===String(id)); if(!t) throw new HttpError(404,'Шаблон не найден.');
+    const next=await this.store.saveSettings({keywords:t.keywords,phrases:t.phrases,matchMode:t.matchMode,matchAny:t.matchAny,intervalSeconds:t.intervalSeconds,activeTemplateId:t.id});
+    return next;
+  }
+  async savePlanGoal(payload) {
+    const contact=String(payload.contactUsername||'').trim(); if(contact && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(contact)) throw new HttpError(400,'Контакт должен быть Telegram-ником в формате @username.');
+    const target=Math.max(0,Math.min(1000000,Math.round(Number(payload.targetLeads)||0)));
+    const existing=await this.store.getPlanGoal();
+    return this.store.savePlanGoal({targetLeads:target,templateId:payload.templateId||null,sourceId:payload.sourceId||null,enabled:target>0,notified:false,contactUsername:contact||existing?.contact_username||''});
+  }
+  async savePlanContact(payload) { const username=String(payload.username||'').trim(); if(username && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(username)) throw new HttpError(400,'Контакт должен быть Telegram-ником в формате @username.'); return this.store.savePlanContact(username); }
+  async evaluatePlanGoal() {
+    const goal=await this.store.getPlanGoal(); if(!goal||!goal.enabled||goal.notified||!goal.target_leads) return false;
+    const count=await this.store.countGoalLeads({templateId:goal.template_id,sourceId:goal.source_id}); if(count<goal.target_leads) return false;
+    await this.store.savePlanGoal({...goal,targetLeads:goal.target_leads,templateId:goal.template_id,sourceId:goal.source_id,enabled:true,notified:true,contactUsername:goal.contact_username});
+    const message=`План по лидам ${goal.target_leads} — ЗАКРЫТ. Проверьте базу, и сделайте выгрузку.`;
+    const username=goal.contact_username;
+    if(username && this.state==='connected' && this.client?.sendMessage) { try { await this.client.sendMessage(username,message); await this.store.addLog('info','План закрыт — уведомление отправлено контакту '+username); } catch(e) { await this.store.addLog('warn','План закрыт, но уведомление не отправлено: '+describeError(e)); } }
+    else await this.store.addLog('info','План по лидам закрыт. Проверьте базу и выгрузку.');
+    return true;
   }
 
   async runDiagnostics() {

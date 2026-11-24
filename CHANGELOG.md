@@ -1,37 +1,34 @@
 # CHANGELOG
 
+## 1.5.0 — 2026-11-24
+
+### Added
+- Filter templates with separate keyword/phrase fields and `keywords`, `phrases`, `both` modes.
+- Date of the triggering Telegram message is shown in the leads table and Excel export.
+- Password re-confirmation (`ADMIN_TOKEN`) for lead database deletion.
+- Overview dashboards for current monitor run, lead counts, conversion, and activity estimates.
+- Plan goal with optional template/source scope and a single Telegram notification to configured `@username` on completion.
+- Journal moved to its own navigation page.
+- ZAMOVO/LEAD transparent logo in sidebar.
+- Potential source shortlist with category mix and batch addition to monitoring.
+- D1 migration 0004 and tests for phrase matching, filter templates, run counters and goal notification.
+
+### Limitations
+- Telegram global thematic search is not implemented; shortlist only searches dialogs available to the connected account.
+- Automatic joining/subscribing to communities is not implemented. Users choose sources and add them to monitoring manually.
+- Cloudflare billing counters are not exposed directly in the application; exact rows read/written and CPU usage are available in Cloudflare Analytics.
+
 ## 0.1.4 — 2026-11-23
-
-### Исправлено
-- Исправлен выбор адресов Telegram DC в Cloudflare Workers: GramJS больше не использует IP-адреса DC для WSS. Для DC1–DC5 принудительно задаются доменные WSS-hostname.
-- Нормализуется адрес DC и для новой, и для восстановленной MTProto-сессии; тот же resolver используется при миграции между дата-центрами и для download DC.
-- Диагностика проверяет WebSocket к DC4 (`vesta.web.telegram.org`), затем MTProto `help.getNearestDc` и запрос QR-токена.
-
-### Изменено
-- API ID / API Hash отделены от подключаемого личного Telegram-аккаунта и хранятся в таблице `tg_app_credentials`.
-- Выход из аккаунта удаляет пользовательскую сессию, но сохраняет ключи API-приложения.
-- Интерфейс объясняет, что ключи идентифицируют приложение и могут использоваться для подключения другого личного аккаунта.
-- Удалены Bot API webhook, endpoint регистрации webhook, обработчики команд и настройки токена бота.
-- Удалена служебная Bot API persistence: миграция 0003 переносит ключи и удаляет таблицы `consent_events` и `telegram_updates`, сохраняя лиды и user-session.
-
-### Проверки
-- Обновлены тесты разделения API credentials и user-session.
-- Добавлены тесты выбора доменных WSS endpoint-ов для всех DC и download DC.
-- SQLite-тест применяет 0001, 0002 и 0003 на реальной тестовой базе и проверяет сохранность лидов/ключей.
-- Реальное подключение к Telegram через развёрнутый Worker должно быть подтверждено диагностикой после публикации; unit-тесты не имитируют успешное живое MTProto-рукопожатие.
+- Fixed Telegram WSS hostname routing for MTProto in Cloudflare Workers.
+- Separated application API credentials from the personal-account session.
+- Removed Telegram Bot API routes, webhook setup and bot persistence.
+- Added D1 migration 0003 and automated package build.
 
 ## 0.1.3 — 2026-11-23
-- QR и phone login ограничены по времени, состояние входа показывает текущий шаг, добавлена отмена зависшего входа.
-- Диагностика разделена на этапы подключения, получения QR и MTProto.
-- Ошибки неверного номера, кода и 2FA пароля отображаются отдельно.
+- QR and phone login timeout handling, diagnostics and cancellation.
 
 ## 0.1.2 — 2026-11-22
-- Добавлен вход личного аккаунта по QR и по номеру телефона.
-- Добавлен серверный Telegram engine в Durable Object, зашифрованное хранение сессии, восстановление после перезапуска.
-- Добавлен read-only мониторинг выбранных групп, супергрупп и комментариев каналов.
-- Добавлены тестовая база лидов, поиск, дедупликация сообщений и экспорт Excel.
-- Добавлены D1 migration 0002 и диагностика подключения.
+- Personal Telegram login via QR/phone, encrypted session, monitoring of chosen chats, lead database and Excel export.
 
 ## 0.1.1 — 2026-11-12
-- Добавлен локальный offline preview и `START_HERE.html`.
-- Исправлены пути CSS/JS для запуска предпросмотра из распакованной папки.
+- Local preview and launcher.

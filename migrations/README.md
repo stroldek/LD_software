@@ -1,22 +1,16 @@
-# Миграции D1
+# D1 migrations
 
-Выполняются по порядку в D1 → Console. Каждый SQL-файл применяется **один раз**.
+Run each migration once, in sequence for a new database.
 
-1. `0001_stage1_prototype.sql` — исходные таблицы этапа 1.
-2. `0002_live_telegram_test.sql` — мониторинг, данные лидов, Telegram account/session и настройки.
-3. `0003_account_credentials_no_bot.sql` — перенос API-ключей приложения в отдельное хранилище и удаление неиспользуемых Bot API таблиц.
+1. `0001_stage1_prototype.sql` — original lead schema.
+2. `0002_live_telegram_test.sql` — personal Telegram account, sources, monitor settings, hit tracking.
+3. `0003_account_credentials_no_bot.sql` — separates app credentials from the user session; removes Bot API persistence.
+4. `0004_dashboard_templates_phrases.sql` — phrase filter mode, template storage, run metrics/history, plan goal/contact, and message-date/attribution columns.
 
-## Для существующей базы версии 0.1.3
+## Existing database v0.1.4
 
-Если миграции 0001 и 0002 уже применены, выполните только `0003_account_credentials_no_bot.sql`.
+If 0001–0003 are already applied, execute **only** `0004_dashboard_templates_phrases.sql` once in D1 → SQL Console. It preserves existing leads, account and session.
 
-Миграция 0003:
-- создаёт `tg_app_credentials`;
-- переносит зашифрованные `api_id_enc` / `api_hash_enc` из `tg_account`;
-- очищает старые колонки API-ключей;
-- удаляет `consent_events` и `telegram_updates`;
-- сохраняет сессию подключённого пользователя и существующие лиды.
+Migration 0004 is not idempotent (ALTER TABLE statements). Do not run it twice.
 
-Не запускайте повторно 0002: в ней есть `ALTER TABLE ADD COLUMN`, и повторное выполнение вызовет ошибку duplicate column.
-
-`../docs/FUTURE_SCHEMA.sql` — справочная схема будущих этапов, не миграция. **Не запускать.**
+`../docs/FUTURE_SCHEMA.sql` is a future reference schema, not a migration.

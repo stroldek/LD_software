@@ -1,6 +1,6 @@
 {
   "name": "lead-database-manager",
-  "version": "0.1.4",
+  "version": "1.5.0",
   "private": true,
   "type": "module",
   "scripts": {

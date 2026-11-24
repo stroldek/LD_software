@@ -1,15 +1,16 @@
 {
   "product": "Lead Database Manager",
-  "version": "0.1.4",
-  "stage": "1 + live Telegram test layer",
+  "version": "1.5.0",
+  "stage": "1 + live Telegram monitoring prototype",
   "stages_total": 12,
-  "build_date": "2026-11-23",
+  "build_date": "2026-11-24",
   "runtime": "Cloudflare Workers + D1 + Durable Object (SQLite) + Static Assets",
   "entrypoint": "src/index.js",
   "migrations": [
     "0001_stage1_prototype.sql",
     "0002_live_telegram_test.sql",
-    "0003_account_credentials_no_bot.sql"
+    "0003_account_credentials_no_bot.sql",
+    "0004_dashboard_templates_phrases.sql"
   ],
   "required_secrets": [
     "ADMIN_TOKEN",
@@ -22,6 +23,7 @@
   "tests": [
     "Developer-side: node --test tests/*.test.js",
     "Developer-side: python3 tests/sqlite_schema_test.py",
+    "Developer-side: node --check public/app.js",
     "Live Cloudflare deployment: Telegram diagnostics → WSS/MTProto handshake → QR token"
   ],
   "verified_against_real_telegram": false,

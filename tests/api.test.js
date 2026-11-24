@@ -95,7 +95,7 @@ test('leads list: search, pagination, and the destructive action needs confirmat
   const injection = await call(env, '/api/leads?q=' + encodeURIComponent("' OR 1=1 --"));
   assert.equal((await injection.json()).data.total, 0, 'search term is bound as a parameter');
   assert.equal((await call(env, '/api/leads/clear', { method: 'POST', body: {} })).status, 400);
-  assert.equal((await call(env, '/api/leads/clear', { method: 'POST', body: { confirm: 'DELETE' } })).status, 200);
+  assert.equal((await call(env, '/api/leads/clear', { method: 'POST', body: { confirmPassword: 'admin-token-for-tests-0123456789' } })).status, 200);
   assert.equal(await store.countLeads(), 0);
 });
 
@@ -107,7 +107,7 @@ test('Excel export: columns, "Nope" for missing phone, Kyiv time, cyrillic and a
   const res = await call(env, '/api/export/leads');
   assert.equal(res.status, 200);
   const page = (await res.json()).data;
-  assert.deepEqual(page.headers, ['Имя', 'Ник', 'Номер телефона', 'Источник', 'Дата добавления в базу', 'Текст сообщения (триггер)']);
+  assert.deepEqual(page.headers, ['Имя', 'Ник', 'Номер телефона', 'Источник', 'Дата сообщения', 'Дата добавления в базу', 'Текст сообщения (триггер)']);
   assert.equal(page.total, 2);
   assert.equal(page.next, null);
   assert.equal(page.rows[0][0], 'Иван Петров');
@@ -116,8 +116,8 @@ test('Excel export: columns, "Nope" for missing phone, Kyiv time, cyrillic and a
   fs.writeFileSync('/tmp/export_test.xlsx', buildXlsx(page.headers, page.rows, { sheetName: 'Лиды' }));
 
   const row = leadToExportRow({ first_name: null, last_name: null, username: null, phone: null, source_title: null, created_at: '2026-11-19 12:30:00', trigger_text: null });
-  assert.deepEqual(row, ['—', '—', 'Nope', '—', '2026-11-19 14:30:00', ''], 'SQLite-style UTC timestamps are shown in Kyiv time (UTC+2 in November)');
-  assert.equal(EXPORT_HEADERS.length, 6);
+  assert.deepEqual(row, ['—', '—', 'Nope', '—', '2026-11-19 14:30:00', '2026-11-19 14:30:00', ''], 'SQLite-style UTC timestamps are shown in Kyiv time (UTC+2 in November)');
+  assert.equal(EXPORT_HEADERS.length, 7);
 });
 
 test('export is paged by keyset: every lead exactly once, in order, no deep OFFSET', async () => {

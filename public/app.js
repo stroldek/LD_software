@@ -1,4 +1,4 @@
-/* ZAMOVO 0.1.4 — browser UI.
+/* ZAMOVO 1.5.0 — browser UI.
    Classic script (not a module) so the interface also opens from a local file; the Excel builder is loaded lazily. */
 (function () {
   'use strict';
@@ -10,7 +10,8 @@
     overview: ['СИСТЕМА УПРАВЛЕНИЯ ЛИДАМИ', 'Обзор'],
     account: ['ПОДКЛЮЧЕНИЕ', 'Аккаунт Telegram'],
     monitor: ['ТЕСТОВЫЙ МОНИТОРИНГ', 'Мониторинг чатов'],
-    leads: ['ТЕСТОВАЯ БАЗА', 'Найденные пользователи']
+    leads: ['ТЕСТОВАЯ БАЗА', 'Найденные пользователи'],
+    journal: ['ЖУРНАЛ СОБЫТИЙ', 'Журнал']
   };
   var current = 'overview';
   var timers = { login: null, search: null };
@@ -116,7 +117,7 @@
   }
   function refresh() {
     if (isLocalPreview) return;
-    var job = { overview: loadOverview, account: loadAccount, monitor: loadMonitor, leads: loadLeads }[current];
+    var job = { overview: loadOverview, account: loadAccount, monitor: loadMonitor, leads: loadLeads, journal: loadMonitor }[current];
     job().catch(function (e) { if (e.status !== 401) toast(e.message); });
     refreshSide();
   }
@@ -130,42 +131,25 @@
 
   // ---------- overview ----------
   function loadOverview() {
-    return Promise.all([
-      fetch('/api/health', { cache: 'no-store' }).then(function (r) { return r.json(); }).catch(function () { return null; }),
-      api('/api/tg/status').catch(function () { return null; }),
-      api('/api/monitor/state').catch(function () { return null; })
-    ]).then(function (r) {
-      var health = r[0], st = r[1], mon = r[2];
-      var db = health && health.checks && health.checks.database;
-      var migrated = !!mon;
-      if (db === 'connected' && migrated) { setPill($('dbPill'), 'Подключена', 'ok'); $('dbText').textContent = 'Worker читает и пишет в D1.'; }
-      else if (db === 'connected') { setPill($('dbPill'), 'Нужна миграция 0002', 'error'); $('dbText').textContent = 'Выполните 0002_live_telegram_test.sql в D1 → SQL Console.'; }
-      else { setPill($('dbPill'), db === 'not_configured' ? 'Нет binding' : 'Ошибка', 'error'); $('dbText').textContent = 'Проверьте D1 binding «DB» и миграции.'; }
-      $('leadCount').textContent = mon ? num(mon.leadsCount) : '—';
-
-      if (st && st.state === 'connected') { setPill($('tgPill'), 'Подключён', 'ok'); $('tgText').textContent = 'Аккаунт на связи с Telegram.'; $('tgWho').textContent = st.me ? ((st.me.firstName || '') + (st.me.username ? ' @' + st.me.username : '')).trim() : '—'; }
-      else if (st && st.state === 'disconnected') { setPill($('tgPill'), 'Спит', 'preview'); $('tgText').textContent = 'Сессия сохранена, переподключается при первом запросе.'; $('tgWho').textContent = st.me ? (st.me.firstName || '') : '—'; }
-      else { setPill($('tgPill'), 'Не подключён', 'error'); $('tgText').textContent = (st && st.error) || 'Войдите на вкладке «Аккаунт Telegram».'; $('tgWho').textContent = '—'; }
-
-      if (mon) {
-        var running = mon.settings.running;
-        setPill($('monPill'), running ? 'Работает' : 'Остановлен', running ? 'ok' : 'preview');
-        $('monText').textContent = running ? 'Проверка каждые ' + mon.settings.intervalSeconds + ' с.' : 'Запустите на вкладке «Мониторинг».';
-        $('monSources').textContent = num(mon.sources.length);
-      } else { setPill($('monPill'), '—', 'preview'); $('monText').textContent = 'Нет данных (проверьте миграцию).'; $('monSources').textContent = '—'; }
-
-      var items = [
-        ['API-ключи приложения настроены', !!(st && st.hasCredentials)],
-        ['Аккаунт Telegram подключён', !!(st && (st.state === 'connected' || st.hasSession))],
-        ['Добавлен хотя бы один чат', !!(mon && mon.sources.length)],
-        ['Заданы ключевые слова', !!(mon && (mon.settings.matchAny || (mon.settings.keywords || '').trim()))],
-        ['В базе есть найденные пользователи', !!(mon && mon.leadsCount > 0)]
-      ];
-      var list = clear($('checklist'));
-      items.forEach(function (it) { list.appendChild(h('li', { class: it[1] ? 'done' : '' }, h('span', { class: 'tick', 'aria-hidden': 'true', text: it[1] ? '✓' : '○' }), it[0], it[1] ? h('em', { text: ' — готово' }) : null)); });
-      list.appendChild(h('li', {}, h('span', { class: 'tick', 'aria-hidden': 'true', text: '○' }), 'Excel скачан и открывается (проверьте вручную на вкладке «Тестовая база»)'));
+    return api('/api/monitor/state').then(function (m) {
+      var run = m.runStats || {}, periods = m.leadPeriods || {}, resources = m.resourceTotals || {}, running = !!m.settings.running;
+      setPill($('dashRunPill'), running ? 'Работает' : 'Остановлен', running ? 'ok' : 'preview');
+      $('dashDuration').textContent = run.started_at ? duration(run.started_at, running ? null : run.stopped_at) : '—';
+      $('dashCycles').textContent = num(run.cycles); $('dashChats').textContent = num(run.chats_processed); $('dashMessages').textContent = num(run.messages_processed);
+      $('dashLeadsToday').textContent = num(periods.today); $('dashLeadsWeek').textContent = num(periods.week); $('dashLeadsMonth').textContent = num(periods.month);
+      var conversion = run.messages_processed ? Math.round((run.leads_generated / run.messages_processed) * 1000) / 10 : 0;
+      $('dashConversion').textContent = run.messages_processed ? num(run.leads_generated) + ' / ' + num(run.messages_processed) + ' (' + conversion + '%)' : 'Нет данных за запуск';
+      var today = resources.today || {}, week = resources.week || {};
+      $('resourceToday').textContent = num(today.cycles || 0) + ' циклов · ' + num(today.messages || 0) + ' сообщений';
+      $('resourceWeek').textContent = num(week.cycles || 0) + ' циклов · ' + num(week.messages || 0) + ' сообщений';
+      $('resourceEstimate').textContent = 'AI tokens: 0 — AI-модуль не подключён. Для точных rows_read / rows_written и CPU сверяйтесь с Cloudflare Analytics; бесплатный потолок лидов оценочный, фактический ниже из-за служебных запросов и индексов.';
+      populatePlan(m); populateTemplateSelects(m.templates || []);
+      $('contactAccount').value = m.planGoal ? (m.planGoal.contact_username || '') : '';
     });
   }
+  function duration(start, end) { var ms = Math.max(0, (end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()); var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60; return h + 'ч ' + m + 'м ' + sec + 'с'; }
+  function populateTemplateSelects(list) { var monitor = $('templateSelect'), plan = $('planTemplate'); if (!monitor || !plan) return; var selected = monitor.value, planSelected = plan.value; clear(monitor); clear(plan); monitor.appendChild(h('option', { value: '', text: 'Текущие условия' })); plan.appendChild(h('option', { value: '', text: 'Все фильтры' })); (list || []).forEach(function (t) { monitor.appendChild(h('option', { value: t.id, text: t.name })); plan.appendChild(h('option', { value: t.id, text: t.name })); }); monitor.value = selected; plan.value = planSelected; }
+  function populatePlan(m) { var goal = m.planGoal || {}; if ($('planTarget') && goal.target_leads != null) $('planTarget').value = goal.target_leads || ''; if ($('planStatus')) $('planStatus').textContent = goal.enabled ? 'Цель: ' + num(goal.target_leads) + ' лидов' : 'Цель не задана'; var src = $('planSource'), selected = src.value; clear(src); src.appendChild(h('option', { value: '', text: 'Все источники' })); (m.sources || []).forEach(function (source) { src.appendChild(h('option', { value: source.id, text: source.title })); }); src.value = goal.source_id || selected || ''; if (goal.template_id) $('planTemplate').value = goal.template_id; }
 
   // ---------- account ----------
   function stopLoginPolling() { if (timers.login) { clearInterval(timers.login); timers.login = null; } }
@@ -174,7 +158,7 @@
     timers.login = setInterval(function () { api('/api/tg/status').then(renderAccount).catch(function () { /* next tick */ }); }, 2000);
   }
 
-  function loadAccount() { return api('/api/tg/status').then(renderAccount); }
+  function loadAccount() { return Promise.all([api('/api/tg/status'),api('/api/plan').catch(function(){return null;})]).then(function(r){if(r[1]&&r[1].goal)$('contactAccount').value=r[1].goal.contact_username||'';return renderAccount(r[0]);}); }
 
   function renderAccount(s) {
     if (current !== 'account') return;
@@ -205,7 +189,7 @@
           h('span', { text: [me.username ? '@' + me.username : null, me.phoneMasked].filter(Boolean).join(' · ') || '—' }),
           h('small', { text: s.state === 'connected' ? 'Соединение активно' : 'Сессия сохранена — соединение откроется автоматически' })),
         h('button', { class: 'button button-danger', type: 'button', onclick: doLogout, text: 'Выйти из аккаунта' })));
-      body.appendChild(h('p', { class: 'panel-text', text: 'Сессия хранится в зашифрованном виде на сервере. Сейчас программа только читает выбранные вами чаты: сообщения не отправляются, профиль не меняется. Удаление аккаунта этим подключением не предусмотрено.' }));
+      body.appendChild(h('p', { class: 'panel-text', text: 'Сессия хранится в зашифрованном виде на сервере. Мониторинг читает выбранные вами чаты. Отправка сообщений предусмотрена только для единичного уведомления о закрытии заданного плана на указанный контакт. Удаление аккаунта этим подключением не предусмотрено.' }));
       stopLoginPolling();
       return;
     }
@@ -318,45 +302,48 @@
 
   // ---------- monitor ----------
   function loadMonitor() {
-    return api('/api/monitor/state').then(function (m) { renderMonitor(m, true); });
+    return api('/api/monitor/state').then(function (m) { renderMonitor(m, true); populateTemplateSelects(m.templates||[]); if(m.planGoal)$('contactAccount').value=m.planGoal.contact_username||''; });
   }
   function renderMonitor(m, fillForm) {
     if (fillForm) {
       $('keywords').value = m.settings.keywords || '';
+      $('phrases').value = m.settings.phrases || '';
+      $('matchMode').value = m.settings.matchMode || 'keywords';
       $('matchAny').checked = !!m.settings.matchAny;
       $('interval').value = m.settings.intervalSeconds;
+      $('templateSelect').value = m.settings.activeTemplateId || '';
     }
     var running = m.settings.running;
     $('runToggle').textContent = running ? 'Остановить мониторинг' : 'Запустить мониторинг';
     $('runToggle').className = 'button ' + (running ? 'button-danger' : 'button-primary');
     $('runToggle').setAttribute('data-running', running ? '1' : '0');
-    var line = running ? 'Работает: проверка каждые ' + m.settings.intervalSeconds + ' с. Найдено пользователей: ' + num(m.leadsCount) + '.' : 'Остановлен. Найдено пользователей: ' + num(m.leadsCount) + '.';
-    if (m.pausedUntil) line += ' Telegram попросил паузу до ' + new Date(m.pausedUntil).toLocaleTimeString('ru-RU') + '.';
-    if (m.telegramState !== 'connected') line += ' Аккаунт сейчас: ' + ({ disconnected: 'спит (проснётся сам)', logged_out: 'не подключён', error: 'ошибка', connecting: 'подключается' }[m.telegramState] || m.telegramState) + '.';
-    $('runState').textContent = line;
-
+    $('runState').textContent = running ? 'Работает: проверка каждые ' + m.settings.intervalSeconds + ' с. Лидов в базе: ' + num(m.leadsCount) + '.' : 'Остановлен. Лидов в базе: ' + num(m.leadsCount) + '.';
+    if (m.pausedUntil) $('runState').textContent += ' Telegram поставил паузу до ' + new Date(m.pausedUntil).toLocaleTimeString('ru-RU') + '.';
     var tb = clear($('sourcesBody'));
-    if (!m.sources.length) tb.appendChild(h('tr', {}, h('td', { colspan: '6', class: 'empty-cell', text: 'Пока ни одного чата. Нажмите «Выбрать из моих чатов».' })));
+    if (!m.sources.length) tb.appendChild(h('tr', {}, h('td', { colspan: '6', class: 'empty-cell', text: 'Пока нет источников. Выберите потенциальные источники из доступных диалогов.' })));
     m.sources.forEach(function (s) {
-      var kind = { group: 'Группа', supergroup: 'Супергруппа', channel: 'Канал + комментарии' }[s.kind] || s.kind;
+      var kind = { group: 'Чат', supergroup: 'Группа', channel: 'Канал · комментарии' }[s.kind] || s.kind;
+      var remove = h('button', { class: 'button button-quiet small', type: 'button', text: 'Убрать' });
+      remove.addEventListener('click', function () { guard(function () { return post('/api/monitor/sources/remove', { id: s.id }).then(loadMonitor); }); });
       tb.appendChild(h('tr', {},
         h('td', {}, h('strong', { text: s.title }), s.last_error ? h('small', { class: 'cell-error', text: s.last_error }) : null),
         h('td', { text: kind }),
         h('td', { text: s.target_title && s.target_title !== s.title ? s.target_title : 'сам чат' }),
         h('td', { text: num(s.messages_seen) }),
-        h('td', { text: s.baseline_done ? fmtDate(s.last_checked_at) : 'ещё не проверялся' }),
-        h('td', {}, h('button', { class: 'button button-quiet small', type: 'button', onclick: function () { guard(function () { return post('/api/monitor/sources/remove', { id: s.id }).then(loadMonitor); }); }, text: 'Убрать' }))));
+        h('td', { text: s.baseline_done ? fmtDate(s.last_checked_at) : 'ожидает первого цикла' }),
+        h('td', {}, remove)));
     });
-
     var log = clear($('logList'));
-    if (!m.log.length) log.appendChild(h('li', { class: 'muted', text: 'Событий пока нет.' }));
-    m.log.forEach(function (e) { log.appendChild(h('li', { class: e.level }, h('time', { text: fmtDate(e.at) }), h('span', { text: e.message }))); });
+    if (!m.log || !m.log.length) log.appendChild(h('li', { class: 'muted', text: 'Событий пока нет.' }));
+    (m.log || []).forEach(function (e) { var row = h('li', { class: e.level }, h('time', { text: fmtDate(e.at) }), h('span', { text: e.message })); log.appendChild(row); });
+    populateTemplateSelects(m.templates || []);
+    populatePlan(m);
   }
 
   /** Saves keywords / interval. Resolves true on success so callers can chain. */
   function saveRules(e) {
     if (e && e.preventDefault) e.preventDefault();
-    return post('/api/monitor/settings', { keywords: $('keywords').value, matchAny: $('matchAny').checked, intervalSeconds: Number($('interval').value) })
+    return post('/api/monitor/settings', { keywords: $('keywords').value, phrases: $('phrases').value, matchMode: $('matchMode').value, activeTemplateId: $('templateSelect').value || null, matchAny: $('matchAny').checked, intervalSeconds: Number($('interval').value) })
       .then(function () { if (e) toast('Условия сохранены.'); return true; })
       .catch(function (err) { if (err.status !== 401) toast(err.message); return false; });
   }
@@ -395,21 +382,16 @@
       .catch(function (e) { dialogsCache = []; clear(list).appendChild(h('li', { class: 'muted', text: e.message })); });
   }
   function renderDialogs() {
-    var q = $('dialogFilter').value.trim().toLowerCase();
-    var list = clear($('dialogList'));
-    var shown = dialogsCache.filter(function (d) { return !q || d.title.toLowerCase().indexOf(q) >= 0; });
-    if (!shown.length) list.appendChild(h('li', { class: 'muted', text: dialogsCache.length ? 'Ничего не найдено.' : 'Чаты не найдены.' }));
-    shown.forEach(function (d) {
-      var kind = { group: 'группа', supergroup: 'супергруппа', channel: 'канал' }[d.kind] || d.kind;
-      var btn = h('button', { class: 'button small' + (d.monitored ? ' button-quiet' : ''), type: 'button', disabled: d.monitored, text: d.monitored ? 'Добавлен' : 'Добавить' });
-      btn.addEventListener('click', function () {
-        btn.disabled = true; btn.textContent = '…';
-        post('/api/monitor/sources', { id: d.id }).then(function () { d.monitored = true; toast('Добавлено: ' + d.title); renderDialogs(); return loadMonitor(); })
-          .catch(function (e) { btn.disabled = false; btn.textContent = 'Добавить'; if (e.status !== 401) toast(e.message); });
-      });
-      list.appendChild(h('li', {}, h('span', { class: 'picker-title', text: d.title }), h('small', { text: kind + (d.members ? ' · ' + num(d.members) + ' уч.' : '') }), btn));
-    });
+    var q=$('dialogFilter').value.trim().toLowerCase(),cat=$('potentialCategory').value,list=clear($('dialogList'));
+    var matches=dialogsCache.filter(function(d){return !q||d.title.toLowerCase().includes(q);});
+    if(cat==='group')matches=matches.filter(function(d){return d.kind==='group';});else if(cat==='supergroup')matches=matches.filter(function(d){return d.kind==='supergroup';});else if(cat==='channel')matches=matches.filter(function(d){return d.kind==='channel';});
+    // Interleave types according to the intended discovery mix 40/40/20. This is only a local-dialog shortlist, not Telegram global search.
+    if(cat==='all'){var buckets={group:matches.filter(d=>d.kind==='group'),supergroup:matches.filter(d=>d.kind==='supergroup'),channel:matches.filter(d=>d.kind==='channel')};var order=[];while(buckets.group.length||buckets.supergroup.length||buckets.channel.length){if(buckets.group.length)order.push(buckets.group.shift());if(buckets.supergroup.length)order.push(buckets.supergroup.shift());if(buckets.group.length)order.push(buckets.group.shift());if(buckets.supergroup.length)order.push(buckets.supergroup.shift());if(buckets.channel.length)order.push(buckets.channel.shift());matches=order;}}
+    if(!matches.length){list.appendChild(h('li',{class:'muted',text:dialogsCache.length?'Ничего не найдено.':'Чаты не найдены.'}));return;}
+    matches.forEach(function(d){var kind={group:'Чат · 40%',supergroup:'Группа · 40%',channel:'Канал · 20%'}[d.kind]||d.kind;var check=h('input',{type:'checkbox',class:'potential-check',value:d.id,disabled:d.monitored});var title=h('span',{class:'picker-title',text:d.title});var addBtn=h('button',{class:'button small'+(d.monitored?' button-quiet':''),type:'button',disabled:d.monitored,text:d.monitored?'В мониторинге':'Добавить'});addBtn.addEventListener('click',function(){addDialogSource(d,addBtn);});list.appendChild(h('li',{},check,title,h('small',{text:kind+(d.members?' · '+num(d.members)+' уч.':'')}),addBtn));});
   }
+  function addDialogSource(d,btn){btn.disabled=true;btn.textContent='…';post('/api/monitor/sources',{id:d.id}).then(function(){d.monitored=true;toast('Добавлен источник: '+d.title);renderDialogs();return loadMonitor();}).catch(function(e){btn.disabled=false;btn.textContent='Добавить';if(e.status!==401)toast(e.message);});}
+  function addSelectedSources(){var ids=Array.prototype.map.call(document.querySelectorAll('.potential-check:checked'),function(c){return c.value;});if(!ids.length){toast('Отметьте источники для добавления.');return;}var button=$('addSelectedSources');button.disabled=true;var done=0;ids.reduce(function(p,id){return p.then(function(){return post('/api/monitor/sources',{id:id}).then(function(){done++;});});},Promise.resolve()).then(function(){toast('Добавлено источников: '+done);return loadMonitor();}).catch(function(e){toast('Добавлено '+done+' из '+ids.length+'. Ошибка: '+e.message);}).finally(function(){button.disabled=false;renderDialogs();});}
 
   // ---------- leads ----------
   function loadLeads() {
@@ -426,6 +408,7 @@
           h('td', { text: l.username ? '@' + l.username : '—' }),
           h('td', { text: l.phone || 'Nope' }),
           h('td', { text: l.source_title || '—' }),
+          h('td', { text: fmtDate(l.trigger_message_date || l.created_at) }),
           h('td', { text: fmtDate(l.created_at) }),
           h('td', { class: 'trigger', title: l.trigger_text || '' }, l.trigger_keyword ? h('span', { class: 'kw', text: l.trigger_keyword === '*' ? 'любое' : l.trigger_keyword }) : null, ' ' + (l.trigger_text || ''))));
       });
@@ -467,10 +450,9 @@
   }
 
   function clearLeads() {
-    confirmModal('Очистить тестовую базу?', 'Будут удалены все найденные пользователи и их сообщения-триггеры. Подключение к Telegram и настройки останутся. Действие нельзя отменить.', 'Удалить всё').then(function (ok) {
-      if (!ok) return;
-      guard(function () { return post('/api/leads/clear', { confirm: 'DELETE' }).then(function () { toast('База очищена.'); leadsState.page = 1; return loadLeads(); }); });
-    });
+    var dialog=$('clearPasswordModal'),input=$('clearPasswordInput');input.value='';
+    dialog.addEventListener('close',function once(){dialog.removeEventListener('close',once);if(dialog.returnValue!=='ok')return;var password=input.value;input.value='';if(!password){toast('Введите пароль панели.');return;}guard(function(){return post('/api/leads/clear',{confirmPassword:password}).then(function(){toast('База очищена.');leadsState.page=1;return loadLeads();});});});
+    if(dialog.showModal)dialog.showModal();else {var p=window.prompt('Введите пароль панели для очистки базы');if(p)guard(function(){return post('/api/leads/clear',{confirmPassword:p}).then(function(){toast('База очищена.');leadsState.page=1;return loadLeads();});});}
   }
 
   // ---------- init ----------
@@ -502,6 +484,38 @@
     $('dialogFilter').addEventListener('input', renderDialogs);
     $('exportButton').addEventListener('click', exportExcel);
     $('clearButton').addEventListener('click', clearLeads);
+    $('saveContactButton').addEventListener('click', function () {
+      var v = $('contactAccount').value.trim();
+      if (v && !/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(v)) { toast('Нужен Telegram username в формате @username.'); return; }
+      guard(function () { return post('/api/plan/contact', { username: v }).then(function () { toast('Контакт уведомлений сохранён.'); }); });
+    });
+    $('savePlanButton').addEventListener('click', function () {
+      guard(function () { return post('/api/plan', { targetLeads: Number($('planTarget').value || 0), templateId: $('planTemplate').value || null, sourceId: $('planSource').value || null }).then(function (g) { $('planStatus').textContent = g.enabled ? 'Цель: ' + num(g.target_leads) + ' лидов' : 'Цель не задана'; toast('Цель сохранена.'); }); });
+    });
+    $('saveTemplateButton').addEventListener('click', function () {
+      var name = $('templateName').value.trim();
+      if (!name) { toast('Введите имя шаблона.'); return; }
+      saveRules().then(function (ok) {
+        if (!ok) return;
+        guard(function () { return post('/api/monitor/templates', {
+          name: name, keywords: $('keywords').value, phrases: $('phrases').value,
+          matchMode: $('matchMode').value, matchAny: $('matchAny').checked,
+          intervalSeconds: Number($('interval').value)
+        }).then(function (list) { populateTemplateSelects(list); $('templateName').value = ''; toast('Шаблон сохранён.'); }); });
+      });
+    });
+    $('templateSelect').addEventListener('change', function () {
+      if (!this.value) return;
+      var id = this.value;
+      guard(function () { return post('/api/monitor/templates/apply', { id: id }).then(function () { toast('Шаблон применён.'); return loadMonitor(); }); });
+    });
+    $('deleteTemplateButton').addEventListener('click', function () {
+      var id = $('templateSelect').value;
+      if (!id) { toast('Выберите шаблон.'); return; }
+      guard(function () { return post('/api/monitor/templates/delete', { id: id }).then(function (list) { populateTemplateSelects(list); toast('Шаблон удалён.'); }); });
+    });
+    $('addSelectedSources').addEventListener('click', addSelectedSources);
+    $('potentialCategory').addEventListener('change', renderDialogs);
     $('pageSize').addEventListener('change', function () { leadsState.page = 1; guard(loadLeads); });
     $('prevPage').addEventListener('click', function () { leadsState.page = Math.max(1, leadsState.page - 1); guard(loadLeads); });
     $('nextPage').addEventListener('click', function () { leadsState.page += 1; guard(loadLeads); });
