@@ -403,7 +403,7 @@ export class TgEngine {
     if (patch.phrases !== undefined) clean.phrases = String(patch.phrases).slice(0, 8000);
     if (patch.matchMode !== undefined) { if (!['keywords','phrases','both'].includes(patch.matchMode)) throw new HttpError(400, 'Неверный режим фильтра.'); clean.matchMode = patch.matchMode; }
     if (patch.activeTemplateId !== undefined) clean.activeTemplateId = String(patch.activeTemplateId || '').slice(0,100) || null;
-    if (patch.matchAny !== undefined) clean.matchAny = Boolean(patch.matchAny);
+    clean.matchAny = false; // Legacy D1 column remains for compatibility; test-only bypass is removed.
     if (patch.intervalSeconds !== undefined) {
       const n = Math.round(Number(patch.intervalSeconds));
       if (!Number.isFinite(n) || n < 15 || n > 3600) throw new HttpError(400, 'Интервал проверки: от 15 до 3600 секунд.');
@@ -412,9 +412,9 @@ export class TgEngine {
     if (patch.running !== undefined) clean.running = Boolean(patch.running);
     const next = await this.store.saveSettings(clean);
     if (clean.running === true) {
-      if (!next.matchAny && !String(next.keywords).trim() && !String(next.phrases).trim()) {
-        await this.store.saveSettings({ running: false });
-        throw new HttpError(400, 'Задайте ключевые слова или включите режим «любое сообщение».');
+      if (!String(next.keywords).trim() && !String(next.phrases).trim()) {
+        await this.store.saveSettings({ running: false, matchAny: false });
+        throw new HttpError(400, 'Задайте ключевые слова или фразы перед запуском мониторинга.');
       }
       await this.store.startRun();
       await this.scheduleAlarm(1500);
@@ -536,7 +536,7 @@ export class TgEngine {
     const n = Math.min(Math.max(Math.round(Number(backfill) || 50), 1), 200);
     const settings = await this.store.getSettings();
     if (!settings.matchAny && !String(settings.keywords).trim() && !String(settings.phrases).trim()) {
-      throw new HttpError(400, 'Задайте ключевые слова или включите режим «любое сообщение».');
+      throw new HttpError(400, 'Задайте ключевые слова или фразы перед проверкой.');
     }
     const client = await this.ensureConnected();
     const sources = (await this.store.listSources()).filter((s) => s.enabled);
