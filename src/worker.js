@@ -2,7 +2,7 @@ import { safeEqual } from './lib/crypto.js';
 import { createStore } from './tg/store.js';
 import { HttpError } from './tg/engine.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const JSON_HEADERS = {
   'content-type': 'application/json; charset=utf-8',
   'cache-control': 'no-store, max-age=0',
@@ -191,9 +191,9 @@ async function adminApi(request, env, url) {
   if (route === 'POST /api/leads/clear') {
     const b = await readJson(request);
     if (!await safeEqual(String(b.confirmPassword || ''), env.ADMIN_TOKEN || '')) throw new HttpError(400, 'Пароль подтверждения не совпадает.');
-    await store.clearLeads();
-    await store.addLog('warn', 'Тестовая база лидов очищена вручную');
-    return json({ ok: true });
+    const cleanup = await store.clearLeads();
+    await store.addLog('warn', 'База результатов мониторинга очищена вручную');
+    return json({ ok: true, data: cleanup });
   }
   if (route === 'GET /api/export/leads') return exportPage(env, url);
 
