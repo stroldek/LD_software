@@ -128,3 +128,6 @@ details.panel>summary{cursor:pointer;font-weight:600;font-size:14px;color:#c4ced
 .resource-help{position:relative;cursor:help;outline:none}.resource-tooltip{display:none;position:absolute;z-index:20;top:calc(100% + 10px);right:0;width:min(390px,75vw);padding:13px 15px;border:1px solid #46515d;border-radius:10px;background:#1d232a;color:#c4ced8;box-shadow:0 12px 30px rgba(0,0,0,.45);font-size:12px;line-height:1.55;white-space:normal;font-weight:400}
 .resource-tooltip strong{display:block;color:#e5e9f0;margin-bottom:5px}.resource-help:hover .resource-tooltip,.resource-help:focus .resource-tooltip,.resource-help:focus-within .resource-tooltip{display:block}
 @media(max-width:900px){.account-grid{grid-template-columns:1fr}.account-grid>.panel{height:auto}.picker-list .potential-source-row{grid-template-columns:28px minmax(0,1fr) auto}.potential-meta{grid-column:2;text-align:left;white-space:normal}.potential-source-row .button{grid-column:3;grid-row:1/3}.contact-field{grid-template-columns:1fr}.contact-field button{grid-column:1;grid-row:auto}}
+
+/* Select all visible sources control */
+.potential-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.potential-toolbar #potentialCategory{min-width:220px}.potential-toolbar #selectAllSources{white-space:nowrap}
