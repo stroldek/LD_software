@@ -518,6 +518,8 @@
       guard(function () { return post('/api/monitor/templates/delete', { id: id }).then(function (list) { populateTemplateSelects(list); toast('Шаблон удалён.'); }); });
     });
     $('addSelectedSources').addEventListener('click', addSelectedSources);
+    $('selectAllSources').addEventListener('click', toggleSelectAllSources);
+    $('dialogList').addEventListener('change', function(e){if(e.target&&e.target.classList.contains('potential-check'))updateSelectAllLabel();});
     $('potentialCategory').addEventListener('change', renderDialogs);
     $('pageSize').addEventListener('change', function () { leadsState.page = 1; guard(loadLeads); });
     $('prevPage').addEventListener('click', function () { leadsState.page = Math.max(1, leadsState.page - 1); guard(loadLeads); });
