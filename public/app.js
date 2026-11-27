@@ -1,4 +1,4 @@
-/* ZAMOVO 1.6.0 — browser UI.
+/* ZAMOVO 1.5.1 — browser UI.
    Classic script (not a module) so the interface also opens from a local file; the Excel builder is loaded lazily. */
 (function () {
   'use strict';
