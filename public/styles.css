@@ -131,3 +131,39 @@ details.panel>summary{cursor:pointer;font-weight:600;font-size:14px;color:#c4ced
 
 /* Select all visible sources control */
 .potential-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.potential-toolbar #potentialCategory{min-width:220px}.potential-toolbar #selectAllSources{white-space:nowrap}
+
+/* ZAMOVO Control Center 01 — production UI layer v1.6.0 */
+:root{--bg:#0d0c13;--panel:#171620;--card:#201d2a;--inner:#292333;--accent:#a78bfa;--green:#7ce7b4;--line:#383044;--shadow:9px 9px 22px rgba(0,0,0,.28),-4px -4px 15px rgba(255,255,255,.025)}
+body{background:#0d0c13;overflow-x:hidden}
+body:before,body:after{content:"";position:fixed;pointer-events:none;z-index:-1;width:70vw;height:70vw;max-width:900px;max-height:900px;border-radius:50%;filter:blur(80px);opacity:.17;background:radial-gradient(circle,#a078fa 0,#5b438e 25%,transparent 69%);animation:zamovoFogA 30s ease-in-out infinite alternate;top:-24%;left:-25%}
+body:after{background:radial-gradient(circle,#4d8db6 0,#354879 23%,transparent 69%);opacity:.11;left:auto;right:-26%;top:28%;animation:zamovoFogB 37s ease-in-out infinite alternate}
+@keyframes zamovoFogA{to{transform:translate(24vw,19vh) scale(1.16)}}
+@keyframes zamovoFogB{to{transform:translate(-19vw,-17vh) scale(1.22)}}
+.shell{display:block;min-height:100vh}
+.sidebar{display:contents}
+.brand,.sidebar-bottom{display:none!important}
+.nav{position:fixed;z-index:99;bottom:calc(16px + env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(300px,calc(100vw - 28px));height:42px;padding:4px 7px;display:flex;align-items:center;justify-content:space-evenly;gap:2px;border:1px solid #ffffff1c;border-radius:15px;background:linear-gradient(180deg,#292532f2,#191720f5);box-shadow:0 14px 35px #0008,0 3px 8px #0008,inset 0 1px #ffffff20;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.nav-label,.nav-item.disabled{display:none!important}
+.nav-item{font-size:0!important;height:32px;width:38px;min-width:38px;padding:0!important;margin:0!important;border-radius:10px;display:grid;place-items:center;flex:1;color:#938ca4;transition:transform .18s ease,color .18s ease,background .18s ease}
+.nav-item:hover{transform:translateY(-2px);color:#e6d9ff;background:#ffffff0a}
+.nav-item.active{color:#e0caff;background:linear-gradient(145deg,#4c386b,#34264b);box-shadow:inset 0 1px #ffffff25,0 4px 9px #0007}
+.nav-icon{width:auto!important;font-size:18px!important;line-height:1;color:inherit!important}
+.nav-item em{display:none!important}
+.main{width:min(1440px,100%);padding:28px clamp(16px,4vw,54px) calc(100px + env(safe-area-inset-bottom));margin:0 auto}
+.dashboard-card,.panel,.setup-card,.source-card,.lead-card{background:linear-gradient(145deg,#24212e,#1a1822)!important;border-color:#ffffff14!important;box-shadow:0 12px 26px #0005,inset 0 1px #ffffff10, inset -2px -3px 9px #0002!important;border-radius:16px}
+.dashboard-card,.panel,.setup-card{transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.dashboard-card:hover,.panel:hover,.setup-card:hover{transform:translateY(-2px);border-color:#a78bfa30!important}
+.button,.button-primary,.button-quiet,.button-danger{box-shadow:0 4px 12px #0004,inset 0 1px #ffffff15}
+input,select,textarea{background:linear-gradient(180deg,#211d2a,#191720)!important;border-color:#3b3349!important}
+:focus-visible{outline:2px solid #a78bfa!important;outline-offset:2px}
+@media(max-width:650px){
+ .main{padding:18px 12px calc(100px + env(safe-area-inset-bottom))}
+ .topbar{gap:9px;align-items:center}
+ .top-actions{flex-wrap:wrap;justify-content:flex-end}
+ .dashboard-grid{grid-template-columns:minmax(0,1fr)!important}
+ .dashboard-wide{grid-column:auto!important}
+ .metric-row{gap:8px!important}
+ .dashboard-card,.panel,.setup-card{padding:15px!important;border-radius:14px!important}
+ .nav{bottom:calc(10px + env(safe-area-inset-bottom));width:min(300px,calc(100vw - 24px));height:42px}
+}
+@media(prefers-reduced-motion:reduce){body:before,body:after{animation:none!important}.dashboard-card,.panel,.setup-card,.nav-item{transition:none!important}}
