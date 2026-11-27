@@ -143,9 +143,16 @@
       $('resourceToday').textContent = num(today.cycles || 0) + ' циклов · ' + num(today.messages || 0) + ' сообщений';
       $('resourceWeek').textContent = num(week.cycles || 0) + ' циклов · ' + num(week.messages || 0) + ' сообщений';
       $('resourceEstimate').textContent = 'AI tokens: 0 — AI-модуль не подключён. Для точных rows_read / rows_written и CPU сверяйтесь с Cloudflare Analytics; бесплатный потолок лидов оценочный, фактический ниже из-за служебных запросов и индексов.';
+      renderLeadChart(periods.today || 0, periods.week || 0, periods.month || 0);
       populatePlan(m); populateTemplateSelects(m.templates || []);
       $('contactAccount').value = m.planGoal ? (m.planGoal.contact_username || '') : '';
     });
+  }
+
+  function renderLeadChart(today, week, month) {
+    var box = $('liveLeadChart'); if (!box) return;
+    clear(box); var vals = [Number(today)||0, Number(week)||0, Number(month)||0], max = Math.max.apply(null, vals.concat([1]));
+    vals.forEach(function(v,i){var col=h('div',{class:'chart-column',title:['Сегодня','Неделя','Месяц'][i]+': '+num(v)});var wrap=h('div',{class:'chart-bar-wrap'});var bar=h('div',{class:'chart-bar'});bar.style.height=Math.max(3,Math.round(v/max*100))+'%';bar.style.animationDelay=(i*.12)+'s';wrap.appendChild(bar);col.appendChild(wrap);col.appendChild(h('strong',{text:num(v)}));box.appendChild(col);});
   }
   function duration(start, end) { var ms = Math.max(0, (end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()); var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60; return h + 'ч ' + m + 'м ' + sec + 'с'; }
   function populateTemplateSelects(list) { var monitor = $('templateSelect'), plan = $('planTemplate'); if (!monitor || !plan) return; var selected = monitor.value, planSelected = plan.value; clear(monitor); clear(plan); monitor.appendChild(h('option', { value: '', text: 'Текущие условия' })); plan.appendChild(h('option', { value: '', text: 'Все фильтры' })); (list || []).forEach(function (t) { monitor.appendChild(h('option', { value: t.id, text: t.name })); plan.appendChild(h('option', { value: t.id, text: t.name })); }); monitor.value = selected; plan.value = planSelected; }
